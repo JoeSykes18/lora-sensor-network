@@ -6,7 +6,7 @@ import time
     designed to run on a LoPy
 '''
 
-LORA_FREQUENCY = 868500000
+LORA_FREQUENCY = 868100000
 
 def log_print(msg):
     print(msg)
@@ -130,8 +130,13 @@ class Basestation():
 
         # main control loop
         while True:
+	
+		rx, port = self.s.recvfrom(256)
+		if rx:
+			print(rx)
+
             # cycle through the sensors and find equipped nodes for each
-            for sensor_type in ALL_SENSORS:
+            '''for sensor_type in ALL_SENSORS:
                 for node in range(0,self.nodes):
                     # check if the node supports the sensor type
                     if sensor_type in node.sensors_available:
@@ -152,5 +157,5 @@ class Basestation():
                                 self.record_sensor_data(pkt)
                             else:
                                 log_print('Received a packet of type %d but expected Sensor Response (%d)' % 
-                                    (pkt.type, MessageType.SENSOR_RESPONSE))
+                                    (pkt.type, MessageType.SENSOR_RESPONSE))'''
                 
