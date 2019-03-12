@@ -1,9 +1,10 @@
 import binascii
 import time
 import os
+import gps
 from bluepy import btle, thingy52
 
-# the enum for a bluetooth device's "short local name" 
+# the enum for a bluetooth device's "short local name"
 SHORT_NAME_ADTYPE = 8
 # the short name that should be assigned to the Thingys
 THINGY_SHORT_NAME = "LoRaSens"
@@ -24,28 +25,28 @@ class Node():
 
 	def __init__(self, desired_data):
 		self.dev = None
-		self.desired_data = desired_data 
+		self.desired_data = desired_data
                 self.init_files()
 
         def init_files(self):
             print('Initialising files...')
-            if not os.path.isfile('temperature.dat'):
-                with open('temperature.dat', 'w') as f:
-                    f.write('timestamp, temperature(deg C)\n')
-            if not os.path.isfile('pressure.dat'):
-                with open('pressure.dat', 'w') as f:
-                    f.write('timestamp, pressure (hPa)\n')
-            if not os.path.isfile('gas.dat'):
-                with open('gas.dat', 'w') as f:
-                    f.write('timestamp, eCO2 (ppm), TVOC (ppb)\n')
-            if not os.path.isfile('humidity.dat'):
-                with open('humidity.dat', 'w') as f:
-                    f.write('timestamp, humidity (%)\n')
+            if not os.path.isfile('temperature.csv'):
+                with open('temperature.csv', 'w') as f:
+                    f.write('timestamp, temperature(deg C), latitude, longitude, altitude\n')
+            if not os.path.isfile('pressure.csv'):
+                with open('pressure.csv', 'w') as f:
+                    f.write('timestamp, pressure (hPa), latitude, longitude, altitude\n')
+            if not os.path.isfile('gas.csv'):
+                with open('gas.csv', 'w') as f:
+                    f.write('timestamp, eCO2 (ppm), TVOC (ppb), latitude, longitude, altitude\n')
+            if not os.path.isfile('humidity.csv'):
+                with open('humidity.csv', 'w') as f:
+                    f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
 
         def enable_sensors(self):
             # enable environmental interface
             self.dev.environment.enable()
-            # enable each sensor 
+            # enable each sensor
             if 'temperature' in self.desired_data:
                 self.dev.environment.configure(temp_int=1000)
                 self.dev.environment.set_temperature_notification(True)
@@ -58,7 +59,7 @@ class Node():
             if 'gas' in self.desired_data:
                 self.dev.environment.configure(gas_mode_int=1)
                 self.dev.environment.set_gas_notification(True)
-                
+
             global e_temperature_handle
             global e_pressure_handle
             global e_humidity_handle
@@ -81,10 +82,10 @@ class Node():
             devices = scanner.scan(8)
 
             # try and find device named 'LoraSense'
-            mac_addr = None 
+            mac_addr = None
             for dev in devices:
                 name = dev.getValueText(SHORT_NAME_ADTYPE)
-                print("Device %s %s (%s), RSSI=%d dB" % (name, dev.addr, dev.addrType, dev.rssi)) 
+                print("Device %s %s (%s), RSSI=%d dB" % (name, dev.addr, dev.addrType, dev.rssi))
 
                 if name == THINGY_SHORT_NAME:
                     print('Found LoraSense Thingy')
@@ -96,12 +97,12 @@ class Node():
 
 	    print("Connecting to Thingy...")
 	    self.dev = thingy52.Thingy52(mac_addr)
-            
+
             print("Connected. Enabling sensors...")
 
             self.enable_sensors()
 
-            self.dev.setDelegate(LoRaSenseDelegate())  
+            self.dev.setDelegate(LoRaSenseDelegate())
 
 	    return True
 
@@ -137,10 +138,12 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         else:
             return
 
-        if msg is not None:    
-            f = open(handles[hnd] + '.dat', 'a')
+        lat, long, alt = getGPSData()
+        print(lat, long, alt)
+        if msg is not None:
+            f = open(handles[hnd] + '.csv', 'a')
             f.write(str(t) + ', ' + msg + '\n')
-    
+
     def _str_to_int(self, s):
         i = int(s, 16)
         if i >= 2**7:
@@ -161,6 +164,19 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         tvoc = int(val[4:6]) + (int(val[6:8]) << 8)
         return eco2, tvoc
 
+    def getGPSData(self):
+        session = gps.gps()
+
+        os.system('clear')
+        session.query('admosy')
+        # a = altitude, d = date/time, m=mode,
+        # o=postion/fix, s=status, y=satellites
+
+        lat = session.fix.latitude
+        long =  session.fix.longitude
+        alt =  session.fix.altitude
+        return lat, long, alt
+
 def main():
 	desired_data = [
 		'temperature',
@@ -170,7 +186,7 @@ def main():
 	]
 	node = Node(desired_data)
 	success = node.scan_for_thingy()
-	
+
 	if success:
                 try:
 		    node.start()
