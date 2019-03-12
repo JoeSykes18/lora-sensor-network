@@ -1,5 +1,6 @@
 import binascii
 import time
+import os
 from bluepy import btle, thingy52
 
 # the enum for a bluetooth device's "short local name" 
@@ -24,6 +25,22 @@ class Node():
 	def __init__(self, desired_data):
 		self.dev = None
 		self.desired_data = desired_data 
+                self.init_files()
+
+        def init_files(self):
+            print('Initialising files...')
+            if not os.path.isfile('temperature.dat'):
+                with open('temperature.dat', 'w') as f:
+                    f.write('timestamp, temperature(deg C)\n')
+            if not os.path.isfile('pressure.dat'):
+                with open('pressure.dat', 'w') as f:
+                    f.write('timestamp, pressure (hPa)\n')
+            if not os.path.isfile('gas.dat'):
+                with open('gas.dat', 'w') as f:
+                    f.write('timestamp, eCO2 (ppm), TVOC (ppb)\n')
+            if not os.path.isfile('humidity.dat'):
+                with open('humidity.dat', 'w') as f:
+                    f.write('timestamp, humidity (%)\n')
 
         def enable_sensors(self):
             # enable environmental interface
@@ -121,7 +138,7 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
             return
 
         if msg is not None:    
-            f = open(handles[hnd] + '.dat', 'w+')
+            f = open(handles[hnd] + '.dat', 'a')
             f.write(str(t) + ', ' + msg + '\n')
     
     def _str_to_int(self, s):
