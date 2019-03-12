@@ -1,6 +1,7 @@
 import binascii
 import time
 import os
+import threading
 from gps import *
 from bluepy import btle, thingy52
 
@@ -18,7 +19,8 @@ e_humidity_handle = None
 e_gas_hande = None
 
 handles = {}
-gpsd = None #setting the global variable
+
+gpsp = None
 
 class Node():
 	# default thingy's MAC address
@@ -28,6 +30,7 @@ class Node():
 		self.dev = None
 		self.desired_data = desired_data
                 self.init_files()
+                self.init_gps()
 
         def init_files(self):
             print('Initialising files...')
@@ -43,6 +46,11 @@ class Node():
             if not os.path.isfile('humidity.csv'):
                 with open('humidity.csv', 'w') as f:
                     f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
+
+        def init_gps(self):
+            print('Starting GPS thread...')
+            self.gps = GpsPoller()
+            self.gps.start()
 
         def enable_sensors(self):
             # enable environmental interface
@@ -91,6 +99,7 @@ class Node():
                 if name == THINGY_SHORT_NAME:
                     print('Found LoraSense Thingy')
                     mac_addr = dev.addr
+                    break
 
             if mac_addr is None:
                 print("Failed to find Thingy via BTLE")
@@ -103,7 +112,7 @@ class Node():
 
             self.enable_sensors()
 
-            self.dev.setDelegate(LoRaSenseDelegate())
+            self.dev.setDelegate(LoRaSenseDelegate(self.gps))
 
 	    return True
 
@@ -112,9 +121,20 @@ class Node():
                 self.dev.waitForNotifications(POLL_TIME)
 
         def disconnect(self):
-            self.dev.disconnect()
+            if self.dev is not None:
+                print('Disconnecting from Thingy...')
+                self.dev.disconnect()
+            print("Killing GPS thread...")
+            self.gps.stop()
+            self.gps.join() # wait for thread to finish
+
 
 class LoRaSenseDelegate(thingy52.DefaultDelegate):
+
+    def __init__(self, gps):
+        thingy52.DefaultDelegate(self)
+        self.gps = gps
+
     def handleNotification(self, hnd, data):
         t = time.time()
         msg = None
@@ -139,11 +159,11 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         else:
             return
 
-        lat, long, alt = getGPSData()
-        print(lat, long, alt)
+        lat, long, alt = self.getGPSData()
+        gps_msg = str(lat) + ', ' + str(long) + ',' + str(alt) 
         if msg is not None:
             f = open(handles[hnd] + '.csv', 'a')
-            f.write(str(t) + ', ' + msg + '\n')
+            f.write(str(t) + ', ' + msg + ', ' + gps_msg + '\n')
 
     def _str_to_int(self, s):
         i = int(s, 16)
@@ -161,37 +181,43 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
 
     def _extract_gas_data(self, data):
         val = binascii.b2a_hex(data)
-        eco2 = int(val[:2]) + (int(val[2:4]) << 8)
-        tvoc = int(val[4:6]) + (int(val[6:8]) << 8)
+        eco2 = int(val[:2], 16) + (int(val[2:4], 16) << 8)
+        tvoc = int(val[4:6], 16) + (int(val[6:8], 16) << 8)
         return eco2, tvoc
 
     def getGPSData(self):
-        gpsp = GpsPoller() # create the thread
-        lat = None
-        long = None
-        alt = None
-        try:
-            gpsp.start() # start it up
-            
-              lat =  gpsd.fix.latitude
-              long = gpsd.fix.longitude
-              alt =  gpsd.fix.altitude
-              gpsp.running = False
-              gpsp.join()
-        return lat,long, alt
+        lat =  self.gps.getLatitude()
+        long = self.gps.getLongitude()
+        alt =  self.gps.getAltitude()
+        
+        return lat, long, alt
 
 class GpsPoller(threading.Thread):
   def __init__(self):
     threading.Thread.__init__(self)
-    global gpsd #bring it in scope
-    gpsd = gps(mode=WATCH_ENABLE) #starting the stream of info
+    self.gpsd = gps(mode=WATCH_ENABLE) #starting the stream of info
     self.current_value = None
     self.running = True #setting the thread running to true
 
+  def getLatitude(self):
+      return self.gpsd.fix.latitude
+
+  def getLongitude(self):
+      return self.gpsd.fix.longitude
+
+  def getAltitude(self):
+      return self.gpsd.fix.altitude
+
   def run(self):
-    global gpsd
-    while gpsp.running:
-      gpsd.next() #this will continue to loop and grab EACH set of gpsd info to clear the buffer
+    i = 0
+    while self.running:
+      
+      print('GPS still alive...')
+      self.gpsd.next() #this will continue to loop and grab EACH set of gpsd info to clear the buffer
+      i += 1
+
+  def stop(self):
+    self.running = False
 
 def main():
 	desired_data = [
@@ -202,13 +228,13 @@ def main():
 	]
 	node = Node(desired_data)
 	success = node.scan_for_thingy()
-
-	if success:
+        
+        if success:
                 try:
 		    node.start()
                 except Exception as e:
-                    print('Stopping')
+                    print('Exception:')
                     print(e)
-                    node.disconnect()
+        node.disconnect()
 if __name__ == '__main__':
     main()
