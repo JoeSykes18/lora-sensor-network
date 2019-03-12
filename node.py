@@ -1,7 +1,7 @@
 import binascii
 import time
 import os
-import gps
+from gps import *
 from bluepy import btle, thingy52
 
 # the enum for a bluetooth device's "short local name"
@@ -18,6 +18,7 @@ e_humidity_handle = None
 e_gas_hande = None
 
 handles = {}
+gpsd = None #setting the global variable
 
 class Node():
 	# default thingy's MAC address
@@ -165,17 +166,32 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         return eco2, tvoc
 
     def getGPSData(self):
-        session = gps.gps()
+        gpsp = GpsPoller() # create the thread
+        lat = None
+        long = None
+        alt = None
+        try:
+            gpsp.start() # start it up
+            
+              lat =  gpsd.fix.latitude
+              long = gpsd.fix.longitude
+              alt =  gpsd.fix.altitude
+              gpsp.running = False
+              gpsp.join()
+        return lat,long, alt
 
-        os.system('clear')
-        session.query('admosy')
-        # a = altitude, d = date/time, m=mode,
-        # o=postion/fix, s=status, y=satellites
+class GpsPoller(threading.Thread):
+  def __init__(self):
+    threading.Thread.__init__(self)
+    global gpsd #bring it in scope
+    gpsd = gps(mode=WATCH_ENABLE) #starting the stream of info
+    self.current_value = None
+    self.running = True #setting the thread running to true
 
-        lat = session.fix.latitude
-        long =  session.fix.longitude
-        alt =  session.fix.altitude
-        return lat, long, alt
+  def run(self):
+    global gpsd
+    while gpsp.running:
+      gpsd.next() #this will continue to loop and grab EACH set of gpsd info to clear the buffer
 
 def main():
 	desired_data = [
