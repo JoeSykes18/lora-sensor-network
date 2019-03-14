@@ -2,12 +2,12 @@ from network import LoRa
 import socket
 import time
 
-''' A wireless sensor network basestation 
+''' A wireless sensor network basestation
     designed to run on a LoPy
 '''
 
-LORA_FREQUENCY = 868100000
-
+LORA_FREQUENCY = 869525000
+lora = LoRa(mode=LoRa.LORA, frequency = LORA_FREQUENCY)
 def log_print(msg):
     print(msg)
 
@@ -73,7 +73,7 @@ class Basestation():
         if id in ids:
             log_print('Node join failed, ID %d already known' % id)
             return False
-        
+
         # Add node to list
         node_sensors = self.decode_available_data(pkt[2:])
         node = Node(id,sensors_available=node_sensors)
@@ -87,7 +87,7 @@ class Basestation():
         request += MessageType.SENSOR_REQUEST
         # append sensor type (payload)
         request += sensor_type
-        return request 
+        return request
 
     def decode_available_data(self, data):
         if len(data) < 3:
@@ -114,48 +114,59 @@ class Basestation():
         print('Sensor type: %d, Value: %d' % (sensor_type, value))
 
     def start(self):
+        print("Opening socket..")
         self.open_socket()
 
         # nodes must join within 60 seconds of basestation activation
-        t_end = time.time() + 60
+        print("Looking for connections...")
+        self.s.setblocking(False)
+        t_end = time.time() + 30
         while time.time() < t_end:
             rx, port = self.s.recvfrom(256)
-            
+
             # rx is a bit stream
             if rx:
+                print(rx)
                 pkt = Packet.decode_packet(rx)
-                
-                if pkt.type == MessageType.JOIN:
-                    self.join_request(pkt)
 
+                print(pkt.type, pkt.id)
+                if pkt.type == MessageType.JOIN:
+                    print("Device found!")
+                    self.join_request(pkt)
+        print("Polling for data...")
         # main control loop
         while True:
-	
+
 		rx, port = self.s.recvfrom(256)
 		if rx:
 			print(rx)
 
             # cycle through the sensors and find equipped nodes for each
-            '''for sensor_type in ALL_SENSORS:
-                for node in range(0,self.nodes):
-                    # check if the node supports the sensor type
-                    if sensor_type in node.sensors_available:
-                        # create packet
-                        pkt = self.create_sensor_request(node.id, sensor_type)
-                        # set blocking to avoid receiving whilst sending
-                        self.s.setblocking(True)
-                        self.s.send(pkt)
-                        # wait a little while
-                        time.sleep(4)
-                        # wait for response before doing anything else
-                        rx, port = self.s.recvfrom(256)
-                        # process response
-                        if rx:
-                            pkt = Packet.decode_packet(rx)
-                
-                            if pkt.type == MessageType.SENSOR_RESPONSE:
-                                self.record_sensor_data(pkt)
-                            else:
-                                log_print('Received a packet of type %d but expected Sensor Response (%d)' % 
-                                    (pkt.type, MessageType.SENSOR_RESPONSE))'''
-                
+        for sensor_type in ALL_SENSORS:
+            for node in range(0,self.nodes):
+                # check if the node supports the sensor type
+                if sensor_type in node.sensors_available:
+                    # create packet
+                    pkt = self.create_sensor_request(node.id, sensor_type)
+                    # set blocking to avoid receiving whilst sending
+                    self.s.setblocking(True)
+                    self.s.send(pkt)
+                    # wait a little while
+                    time.sleep(4)
+                    # wait for response before doing anything else
+                    rx, port = self.s.recvfrom(256)
+                    # process response
+                    if rx:
+                        pkt = Packet.decode_packet(rx)
+
+                        if pkt.type == MessageType.SENSOR_RESPONSE:
+                            self.record_sensor_data(pkt)
+                        else:
+                            log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
+def main():
+    base = Basestation([])
+    base.start()
+
+main()
+if __name__ == '__main__':
+    main()
