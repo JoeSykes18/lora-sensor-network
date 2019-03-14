@@ -1,6 +1,7 @@
 from network import LoRa
 import socket
 import time
+from packet import Packet, MessageType
 
 ''' A wireless sensor network basestation
     designed to run on a LoPy
@@ -18,13 +19,6 @@ class SensorType():
     HUMID = 1
     AIR_QUAL = 2
 
-''' Enum for the types of message that are produced
-'''
-class MessageType():
-    JOIN = 0
-    SENSOR_RESPONSE = 1
-    SENSOR_REQUEST = 2
-
 ALL_SENSORS = [SensorType.TEMP, SensorType.HUMID, SensorType.AIR_QUAL]
 
 class Node():
@@ -34,23 +28,6 @@ class Node():
         self.id = id
         self.frequency = frequency
         self.sensors_available = sensors_available
-
-class Packet():
-    ''' Network packet utilities
-    '''
-    def __init__(self, id, msg_type, payload):
-        self.id = id
-        self.type = msg_type
-        self.payload = payload
-
-    @staticmethod
-    def decode_packet(data):
-        # first byte is ID
-        id = data[0]
-        msg_type = data[1]
-        payload = data[2:]
-
-        return Packet(id, msg_type, payload)
 
 class Basestation():
     ''' The basestation (master) designed to run on a LoPy
