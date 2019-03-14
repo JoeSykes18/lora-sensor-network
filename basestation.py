@@ -1,7 +1,7 @@
 from network import LoRa
 import socket
 import time
-from packet import Packet, MessageType
+from utils import Packet, MessageType, SensorType
 
 ''' A wireless sensor network basestation
     designed to run on a LoPy
@@ -9,17 +9,10 @@ from packet import Packet, MessageType
 
 LORA_FREQUENCY = 869525000
 lora = LoRa(mode=LoRa.LORA, frequency = LORA_FREQUENCY)
+ALL_SENSORS = [SensorType.TEMP, SensorType.HUMID, SensorType.AIR_QUAL, SensorType.PRESS]
+
 def log_print(msg):
     print(msg)
-
-''' Enum for the types of sensor available to the network
-'''
-class SensorType():
-    TEMP = 0
-    HUMID = 1
-    AIR_QUAL = 2
-
-ALL_SENSORS = [SensorType.TEMP, SensorType.HUMID, SensorType.AIR_QUAL]
 
 class Node():
     ''' A node on the network that operates a number of sensors
@@ -44,7 +37,7 @@ class Basestation():
         self.s.setsockopt(socket.SOL_LORA, socket.SO_DR, 5)
 
     def join_request(self, pkt):
-        id = pkt.id
+        id = pkt.src_id
 
         ids = map(lambda n: n.id, self.nodes)
         if id in ids:
@@ -52,9 +45,11 @@ class Basestation():
             return False
 
         # Add node to list
-        node_sensors = self.decode_available_data(pkt[2:])
+        node_sensors = self.decode_available_data(pkt.payload)
         node = Node(id,sensors_available=node_sensors)
         self.nodes.append(node)
+        s.send()
+
 
     def create_sensor_request(self, id, sensor_type):
         request = b''
@@ -73,12 +68,15 @@ class Basestation():
 
         available = []
 
-        if data[0] == 1:
+        if data[0] == '1':
             available.append(SensorType.TEMP)
-        if data[1] == 1:
+        if data[1] == '1':
             available.append(SensorType.HUMID)
-        if data[2] == 1:
+        if data[2] == '1':
             available.append(SensorType.AIR_QUAL)
+        if data[3] == '1':
+            available.append(SensorType.PRESS)
+
 
         return available
 
@@ -103,10 +101,8 @@ class Basestation():
 
             # rx is a bit stream
             if rx:
-                print(rx)
                 pkt = Packet.decode_packet(rx)
-
-                print(pkt.type, pkt.id)
+                print(pkt.type, pkt.src_id)
                 if pkt.type == MessageType.JOIN:
                     print("Device found!")
                     self.join_request(pkt)
