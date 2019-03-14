@@ -6,6 +6,12 @@ from gps import *
 from bluepy import btle, thingy52
 from packet import Packet, MessageType
 
+DATA_FOLDER = "../data"
+TEMP_DATA_FILE = "../data/temperature.csv"
+PRESSURE_DATA_FILE = "../data/pressure.csv"
+GAS_DATA_FILE = "../data/gas.csv"
+HUMIDITY_DATA_FILE = "../data/humidity.csv"
+
 # the enum for a bluetooth device's "short local name"
 SHORT_NAME_ADTYPE = 8
 # the short name that should be assigned to the Thingys
@@ -40,17 +46,19 @@ class Node(threading.Thread):
 
   def init_files(self):
     print('Initialising files...')
-    if not os.path.isfile('temperature.csv'):
-      with open('temperature.csv', 'w') as f:
+    if not os.path.exists(DATA_FOLDER):
+      os.makedirs(DATA_FOLDER)
+    if not os.path.isfile(TEMP_DATA_FILE):
+      with open(TEMP_DATA_FILE, 'w') as f:
         f.write('timestamp, temperature(deg C), latitude, longitude, altitude\n')
-    if not os.path.isfile('pressure.csv'):
-      with open('pressure.csv', 'w') as f:
+    if not os.path.isfile(PRESSURE_DATA_FILE):
+      with open(PRESSURE_DATA_FILE, 'w') as f:
         f.write('timestamp, pressure (hPa), latitude, longitude, altitude\n')
-    if not os.path.isfile('gas.csv'):
-      with open('gas.csv', 'w') as f:
+    if not os.path.isfile(GAS_DATA_FILE):
+      with open(GAS_DATA_FILE, 'w') as f:
         f.write('timestamp, eCO2 (ppm), TVOC (ppb), latitude, longitude, altitude\n')
-    if not os.path.isfile('humidity.csv'):
-      with open('humidity.csv', 'w') as f:
+    if not os.path.isfile(HUMIDITY_DATA_FILE):
+      with open(HUMIDITY_DATA_FILE, 'w') as f:
         f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
 
   def init_gps(self):
