@@ -1,10 +1,12 @@
+import lorasensornetwork_pb2 as lsn
+
 ''' Enum for the types of message that are produced
 '''
 class MessageType():
-  JOIN = '0'
-  JOIN_ACK = '1'
-  SENSOR_RESPONSE = '2'
-  SENSOR_REQUEST = '3'
+  JOIN = 0
+  JOIN_ACK = 1
+  SENSOR_RESPONSE = 2
+  SENSOR_REQUEST = 3
 
 ''' Enum for the types of sensor available to the network
 '''
@@ -27,15 +29,21 @@ class Packet():
 
   @staticmethod
   def createJoinRequestPacket(id):
-    # Packet = Source + Dest + Type + Payload
-    pkt = str(id) + str(0) + str(MessageType.JOIN) + '0'
-    return bytearray(pkt, 'utf-8')
+    pkt = lsn.Packet()
+    pkt.src_id = bytes(id)
+    pkt.dest_id = bytes(0)
+    pkt.msg_type = lsn.Packet.MessageType.Value('JOIN_REQUEST')
+    pkt.payload = bytes(0)
+    return pkt
 
   @staticmethod
   def createJoinResponsePacket(id):
-    # Packet = Source + Dest + Type + Payload
-    pkt = str(0) + str(id) + str(MessageType.JOIN_ACK) + '0'
-    return bytearray(pkt, 'utf-8')
+    pkt = lsn.Packet()
+    pkt.src_id = 0
+    pkt.dest_id = id
+    pkt.msg_type = lsn.Packet.MessageType.JOIN_ACK
+    pkt.payload = 0
+    return pkt
 
   @staticmethod
   def decode_packet(data):

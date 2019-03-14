@@ -1,10 +1,13 @@
+import sys
+sys.path.append('/home/pi/lora-sensor-network/')
 import binascii
 import time
 import os
 import threading
+import zmq
 from gps import *
 from bluepy import btle, thingy52
-from packet import Packet, MessageType
+from utils import Packet, MessageType
 
 DATA_FOLDER = "../data"
 TEMP_DATA_FILE = "../data/temperature.csv"
@@ -38,10 +41,12 @@ class Node(threading.Thread):
     self.id = id
     self.dev = None
     self.desired_data = desired_data
-    self.init_files()
     self.gps = None
     self.joined_lora = False
     self.running = True
+    
+    self.init_files()
+    self.init_mq()
     #self.init_gps()
 
   def init_files(self):
@@ -60,6 +65,13 @@ class Node(threading.Thread):
     if not os.path.isfile(HUMIDITY_DATA_FILE):
       with open(HUMIDITY_DATA_FILE, 'w') as f:
         f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
+
+  def init_mq(self):
+    self.mq = zmq.Context()
+    print('Connecting to ZMQ server...')
+    self.socket = self.mq.socket(zmq.REQ)
+    self.socket.connect('tcp://localhost:5555')
+    print('Connected to ZMQ')
 
   def init_gps(self):
     print('Starting GPS thread...')
@@ -133,8 +145,23 @@ class Node(threading.Thread):
 
   def join_lora_network(self):
     print('Attempting to join LoRa network...')
-    pkt = Packet.createJoinPacket(self.id) 
-    # send over LoRa and wait for response
+    pkt = Packet.createJoinRequestPacket(self.id) 
+    # send over LoRa (via ZeroMQ to C program) and wait for response
+    self.socket.send(pkt.SerializeToString())
+    # wait for response 
+    resp = self.socket.recv()
+    if resp == 'TR':
+      print('LoRa network request transmitted. Waiting for confirmation...')
+    else:
+      print('Transmission ACK not received, instead: ', resp)
+      return
+    resp = self.socket.recv()
+    if resp == 'JO':
+      self.joined_lora = True
+      print('LoRa network joined successfully')    
+    else:
+      print('Failed to join LoRa network')
+      
 
   def run(self):
     while self.running:
@@ -240,7 +267,6 @@ class GpsPoller(threading.Thread):
   def run(self):
     i = 0
     while self.running:
-
       print('GPS still alive...')
       self.gpsd.next() #this will continue to loop and grab EACH set of gpsd info to clear the buffer
       i += 1

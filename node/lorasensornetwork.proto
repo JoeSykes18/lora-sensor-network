@@ -4,7 +4,7 @@ package lorasensornetwork;
 
 message Packet {
 
-  bytes src_id =1 ;
+  bytes src_id = 1;
   bytes dest_id = 2;
   MessageType msg_type = 3;
   bytes payload = 4;

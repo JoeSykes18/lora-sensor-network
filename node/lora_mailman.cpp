@@ -15,7 +15,7 @@
 #include <wiringPi.h>
 //#include <boost/python.hpp>
 #include <zmq.hpp>
-#include <packet.pb.h>
+#include <lorasensornetwork.pb.h>
 #include <stdio.h>
 #include <lmic.h>
 #include <hal.h>
@@ -40,21 +40,12 @@
 #define TX_INTERVAL 2000
 
 // Pin mapping
-//const lmic_pinmap lmic_pins = {
-//    .nss = 6,
-//    .rxtx = LMIC_UNUSED_PIN,
-//    .rst = 5,
-//    .dio = {2, 3, 4},
-//};
-
 lmic_pinmap pins = {
   .nss = 6,
   .rxtx = UNUSED_PIN, // Not connected on RFM92/RFM95
   .rst = 0,  // Needed on RFM92/RFM95
   .dio = {7,4,5}
 };
-
-
 
 // These callbacks are only used in over-the-air activation, so they are
 // left empty here (we cannot leave them out completely unless
@@ -86,21 +77,27 @@ std::string packet_to_string(const lorasensornetwork::Packet & pkt) {
 void tx(const lorasensornetwork::Packet & packet) {
   os_radio(RADIO_RST); // Stop RX first
   sleep(1); // Wait a bit, without this os_radio below asserts, apparently because the state hasn't changed yet
+  
   std::string pkt_str = packet_to_string(packet); 
-  fprintf(stdout, "Preparing to send:\n");
+  
+  fprintf(stdout, "Preparing to transmit packet: ");
   fprintf(stdout, pkt_str.c_str());
+  fprintf(stdout, "...");
+  
   LMIC.dataLen = 0;
+  
   for (char c : pkt_str) {
     LMIC.frame[LMIC.dataLen++] = c;
   }
+  
   //LMIC.osjob.func = func;
   os_radio(RADIO_TX);
-  fprintf(stdout, "TX\n");
+  fprintf(stdout, "transmitted\n");
 }
 
 // Enable rx mode and call func when a packet is received
 void rx(osjobcb_t func) {
-  //LMIC.osjob.func = func;
+  LMIC.osjob.func = func;
   LMIC.rxtime = os_getTime(); // RX _now_
   // Enable "continuous" RX (e.g. without a timeout, still stops after
   // receiving a packet)
@@ -110,6 +107,7 @@ void rx(osjobcb_t func) {
 
 static void rxtimeout_func(osjob_t *job) {
   //digitalWrite(LED_BUILTIN, LOW); // off
+  fprintf(stdout, "Receive timedout\n");
 }
 
 static void rx_func (osjob_t* job) {
@@ -123,7 +121,7 @@ static void rx_func (osjob_t* job) {
 
   // Reschedule TX so that it should not collide with the other side's
   // next TX
-  os_setTimedCallback(&txjob, os_getTime() + ms2osticks(TX_INTERVAL/2), tx_func);
+  //os_setTimedCallback(&txjob, os_getTime() + ms2osticks(TX_INTERVAL/2), tx_func);
 
   fprintf(stdout, "Got %d bytes\n", LMIC.dataLen);
   printArr(LMIC.frame);
@@ -160,8 +158,6 @@ void setup() {
   // Init LMIC
   wiringPiSetup();
 
-  fprintf(stdout, "Starting\n");
-
   // Init random util
   srand(time(NULL));
 
@@ -169,7 +165,6 @@ void setup() {
   os_init();
 
   // Set up these settings once, and use them for both TX and RX
-
 #if defined(CFG_eu868)
   // Use a frequency in the g3 which allows 10% duty cycling.
   LMIC.freq = 869525000;
@@ -179,42 +174,51 @@ void setup() {
 
   // Maximum TX power
   LMIC.txpow = 27;
+  
   // Use a medium spread factor. This can be increased up to SF12 for
   // better range, but then the interval should be (significantly)
   // lowered to comply with duty cycle limits as well.
   LMIC.datarate = DR_SF7;
+  
   // This sets CR 4/5, BW125 (except for DR_SF7B, which uses BW250)
   LMIC.rps = updr2rps(LMIC.datarate);
-
-  fprintf(stdout, "Started\n");
 
   // setup initial job
   //os_setCallback(&txjob, tx_func);
 }
 
-// Setup from thingsnetwork example for reference
-/*setup() {
-  // LMIC init
-  wiringPiSetup();
+void check_transmissions(zmq::socket_t & socket) {
+    // Check for any outbound packets to send
+    zmq::message_t mq_msg;
+    socket.recv(&mq_msg);
+    fprintf(stdout, "Packet received on message queue, deserializing...");
 
-  os_init();
-  // Reset the MAC state. Session and pending data transfers will be discarded.
-  LMIC_reset();
-  // Set static session parameters. Instead of dynamically establishing a session 
-  // by joining the network, precomputed session parameters are be provided.
-  LMIC_setSession (0x1, DEVADDR, (u1_t*)DEVKEY, (u1_t*)ARTKEY);
-  // Disable data rate adaptation
-  LMIC_setAdrMode(0);
-  // Disable link check validation
-  LMIC_setLinkCheckMode(0);
-  // Disable beacon tracking
-  LMIC_disableTracking ();
-  // Stop listening for downstream data (periodical reception)
-  LMIC_stopPingable();
-  // Set data rate and transmit power (note: txpow seems to be ignored by the library)
-  LMIC_setDrTxpow(DR_SF7,14);
-  //
-}*/
+    lorasensornetwork::Packet packet;
+    std::string pkt_str = std::string(static_cast<char*>(mq_msg.data()), mq_msg.size()); 
+
+    if (!packet.ParseFromString(pkt_str.c_str())) {
+      fprintf(stdout, "failed to deserialize packet, dropping packet.\n");
+      return;
+    }
+
+    fprintf(stdout, "deserialized to Packet object\n");
+
+    tx(packet);
+
+    fprintf(stdout, "Sending ACK to python node...");
+
+    zmq::message_t ack(2);
+    memcpy(ack.data(), "TRANSMITTED", 2);
+    socket.send(ack);
+
+    fprintf(stdout, "sent.\n");
+}
+
+void receive(zmq::socket_t & socket) {
+    fprintf(stdout, "Checking for incoming LoRa packets...");
+    rx(rx_func);
+    fprintf(stdout, "TODO implement this\n");
+}
 
 void loop() {
   // Set up ZeroMQ socket to receive/deposit packets
@@ -226,39 +230,20 @@ void loop() {
 
   while(1) {
     fprintf(stdout, "Loop\n");
-    
-    // Wait for an outbound packet to send
-    zmq::message_t mq_msg;
-    socket.recv(&mq_msg);
-    fprintf(stdout, "Packet received, translating to object...\n");
 
-    lorasensornetwork::Packet packet;
-    std::string pkt_str = std::string(static_cast<char*>(mq_msg.data()), mq_msg.size());
-    if (!packet.ParseFromString(pkt_str.c_str())) {
-      fprintf(stdout, "Failed to parse packet, dropping\n");
-      continue;
-    }
+    check_transmissions(socket);
 
-    // Send packet
-    tx(packet);
+    //receive(socket);
   }
 }
 
 
 int main() {
-  fprintf(stdout, "Setting up...\n");
+  fprintf(stdout, "==== Mailman Started ====\nSetting up...");
   setup();
-  fprintf(stdout, "Set up. Looping...\n");
+  fprintf(stdout, "set up. Starting loop...\n");
   
   loop();
 
   return 0;
 }
-
-/*BOOST_PYTHON_MODULE(loraraw)
-{
-    using namespace boost::python;
-    def("tx", tx);
-    //def("rx", rx);
-}*/
-
