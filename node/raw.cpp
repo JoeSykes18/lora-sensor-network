@@ -13,6 +13,7 @@
  *******************************************************************************/
 
 #include <wiringPi.h>
+#include <boost/python.hpp>
 #include <stdio.h>
 #include <lmic.h>
 #include <hal.h>
@@ -129,7 +130,7 @@ static void txdone_func (osjob_t* job) {
 // log text to USART and toggle LED
 static void tx_func (osjob_t* job) {
   // say hello
-  tx("101", txdone_func);
+  tx("101110", txdone_func);
   // reschedule job every TX_INTERVAL (plus a bit of random to prevent
   // systematic collisions), unless packets are received, then rx_func
   // will reschedule at half this time.
@@ -214,5 +215,12 @@ int main() {
   loop();
 
   return 0;
+}
+
+BOOST_PYTHON_MODULE(loraraw)
+{
+    using namespace boost::python;
+    def("tx", tx);
+    def("rx", rx);
 }
 
