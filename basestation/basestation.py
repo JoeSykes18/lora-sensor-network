@@ -1,7 +1,7 @@
 from network import LoRa
 import socket
 import time
-from utils import Packet, MessageType, SensorType
+from utils.utils import Packet, MessageType, SensorType
 
 ''' A wireless sensor network basestation
     designed to run on a LoPy
@@ -95,7 +95,7 @@ class Basestation():
         # nodes must join within 60 seconds of basestation activation
         print("Looking for connections...")
         self.s.setblocking(False)
-        t_end = time.time() + 30
+        t_end = time.time() + 90
         while time.time() < t_end:
             rx, port = self.s.recvfrom(256)
 
@@ -141,5 +141,3 @@ def main():
     base.start()
 
 main()
-if __name__ == '__main__':
-    main()
