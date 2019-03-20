@@ -49,7 +49,7 @@ class Packet():
     # first byte is ID
     src = chr(data[0])
     dest = chr(data[1])
-    msg_type = chr(data[2])
+    msg_type = int(chr(data[2]))
     payload = data[3:]
     payload = [chr(c) for c in payload]
 
