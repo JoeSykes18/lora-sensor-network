@@ -47,7 +47,7 @@ class Node(threading.Thread):
     
     self.init_files()
     self.init_mq()
-    #self.init_gps()
+    self.init_gps()
 
   def init_files(self):
     print('Initialising files...')
