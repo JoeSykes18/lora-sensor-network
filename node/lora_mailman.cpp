@@ -15,7 +15,6 @@
 #include <wiringPi.h>
 //#include <boost/python.hpp>
 #include <zmq.hpp>
-#include <lorasensornetwork.pb.h>
 #include <stdio.h>
 #include <lmic.h>
 #include <hal.h>
@@ -60,33 +59,21 @@ void onEvent (ev_t ev) {
 osjob_t txjob;
 osjob_t timeoutjob;
 static void tx_func (osjob_t* job);
-
+void receive(zmq::socket_t & socket, std::string& output); 
 static void printArr(unsigned char* arr);
 
-std::string packet_to_string(const lorasensornetwork::Packet & pkt) {
-  std::string output = "";
-
-  // Get MessageType Enum value
-  int val = pkt.msg_type();
-
-  output += pkt.src_id() + pkt.dest_id() + std::to_string(val) + pkt.payload();
-  return output;
-}
-
 // Transmit the given string and call the given function afterwards
-void tx(const lorasensornetwork::Packet & packet) {
+void tx(const std::string & packet) {
   os_radio(RADIO_RST); // Stop RX first
   sleep(1); // Wait a bit, without this os_radio below asserts, apparently because the state hasn't changed yet
   
-  std::string pkt_str = packet_to_string(packet); 
-  
-  fprintf(stdout, "Preparing to transmit packet: ");
-  fprintf(stdout, pkt_str.c_str());
+  fprintf(stdout, "[MAILMAN] Preparing to transmit packet: ");
+  fprintf(stdout, packet.c_str());
   fprintf(stdout, "...");
   
   LMIC.dataLen = 0;
   
-  for (char c : pkt_str) {
+  for (char c : packet) {
     LMIC.frame[LMIC.dataLen++] = c;
   }
   
@@ -123,7 +110,7 @@ static void rx_func (osjob_t* job) {
   // next TX
   //os_setTimedCallback(&txjob, os_getTime() + ms2osticks(TX_INTERVAL/2), tx_func);
 
-  fprintf(stdout, "Got %d bytes\n", LMIC.dataLen);
+  fprintf(stdout, "[MAILMAN] Got %d bytes\n", LMIC.dataLen);
   printArr(LMIC.frame);
 
   // Restart RX
@@ -191,33 +178,47 @@ void check_transmissions(zmq::socket_t & socket) {
     // Check for any outbound packets to send
     zmq::message_t mq_msg;
     socket.recv(&mq_msg);
-    fprintf(stdout, "Packet received on message queue, deserializing...");
+    fprintf(stdout, "[MAILMAN] Packet received on message queue...");
 
-    lorasensornetwork::Packet packet;
+    fprintf(stdout, "[MAILMAN] packet length:");
+    fprintf(stdout, std::to_string(mq_msg.size()).c_str());
+
     std::string pkt_str = std::string(static_cast<char*>(mq_msg.data()), mq_msg.size()); 
 
-    if (!packet.ParseFromString(pkt_str.c_str())) {
-      fprintf(stdout, "failed to deserialize packet, dropping packet.\n");
+    if (pkt_str.length() == 0) {
+      fprintf(stdout, "packet on queue had length 0 so transmission finishing.\n");
       return;
     }
 
-    fprintf(stdout, "deserialized to Packet object\n");
+    fprintf(stdout, "\n");
 
-    tx(packet);
+    tx(pkt_str);
 
-    fprintf(stdout, "Sending ACK to python node...");
+    fprintf(stdout, "[MAILMAN] Waiting for LoRa reply...");
 
-    zmq::message_t ack(2);
-    memcpy(ack.data(), "TRANSMITTED", 2);
+    std::string loraReply;
+    receive(socket, loraReply);
+
+    fprintf(stdout, "received LoRa reply. Sending to python node...");
+
+    zmq::message_t ack(5);
+    memcpy(ack.data(), loraReply.c_str(), 5);
     socket.send(ack);
 
-    fprintf(stdout, "sent.\n");
+    fprintf(stdout, "sent.\n"); 
 }
 
-void receive(zmq::socket_t & socket) {
-    fprintf(stdout, "Checking for incoming LoRa packets...");
+void receive(zmq::socket_t & socket, std::string& output) {
+    fprintf(stdout, "[MAILMAN] Checking for incoming LoRa packets...");
     rx(rx_func);
-    fprintf(stdout, "TODO implement this\n");
+
+    if (LMIC.dataLen == 0) {
+      output = "FAILED";
+      return;
+    }
+
+    output = "";
+    output.append(reinterpret_cast<const char*>(LMIC.frame));
 }
 
 void loop() {
@@ -226,7 +227,7 @@ void loop() {
   zmq::socket_t socket(context, ZMQ_REP);
   socket.bind("tcp://*:5555");
 
-  fprintf(stdout, "Binded to ZeroMQ socket, listening...\n");
+  fprintf(stdout, "[MAILMAN] Binded to ZeroMQ socket, listening...\n");
 
   while(1) {
     fprintf(stdout, "Loop\n");
@@ -239,7 +240,7 @@ void loop() {
 
 
 int main() {
-  fprintf(stdout, "==== Mailman Started ====\nSetting up...");
+  fprintf(stdout, "==== Mailman Started ====\n[MAILMAN] Setting up...");
   setup();
   fprintf(stdout, "set up. Starting loop...\n");
   

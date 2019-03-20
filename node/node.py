@@ -8,12 +8,15 @@ import zmq
 from gps import *
 from bluepy import btle, thingy52
 from utils import Packet, MessageType
+from gpsinterface import GpsInterface
 
 DATA_FOLDER = "../data"
 TEMP_DATA_FILE = "../data/temperature.csv"
 PRESSURE_DATA_FILE = "../data/pressure.csv"
 GAS_DATA_FILE = "../data/gas.csv"
 HUMIDITY_DATA_FILE = "../data/humidity.csv"
+
+PRINT_BTLE_DEVICES = False
 
 # the enum for a bluetooth device's "short local name"
 SHORT_NAME_ADTYPE = 8
@@ -75,7 +78,7 @@ class Node(threading.Thread):
 
   def init_gps(self):
     print('Starting GPS thread...')
-    self.gps = GpsPoller()
+    self.gps = GpsInterface()
     self.gps.start()
 
   def enable_sensors(self):
@@ -110,7 +113,7 @@ class Node(threading.Thread):
         e_humidity_handle: 'humidity', e_gas_handle: 'gas'}
 
   def scan_for_thingy(self):
-    print("Scanning for BTLE devices")
+    print("[NODE] Scanning for BTLE devices")
 
     # scan for 8 seconds
     scanner = btle.Scanner()
@@ -120,21 +123,22 @@ class Node(threading.Thread):
     mac_addr = None
     for dev in devices:
       name = dev.getValueText(SHORT_NAME_ADTYPE)
-      print("Device %s %s (%s), RSSI=%d dB" % (name, dev.addr, dev.addrType, dev.rssi))
+      if PRINT_BTLE_DEVICES:
+	print("[NODE] Device %s %s (%s), RSSI=%d dB" % (name, dev.addr, dev.addrType, dev.rssi))
 
       if name == THINGY_SHORT_NAME:
-        print('Found LoraSense Thingy')
+        print('[NODE] Found LoraSense Thingy')
         mac_addr = dev.addr
         break
 
     if mac_addr is None:
-      print("Failed to find Thingy via BTLE")
+      print("[NODE] Failed to find Thingy via BTLE")
       return False
 
-    print("Connecting to Thingy...")
+    print("[NODE] Connecting to Thingy...")
     self.dev = thingy52.Thingy52(mac_addr)
 
-    print("Connected. Enabling sensors...")
+    print("[NODE] Connected. Enabling sensors...")
 
     self.enable_sensors()
 
@@ -144,23 +148,24 @@ class Node(threading.Thread):
     return True
 
   def join_lora_network(self):
-    print('Attempting to join LoRa network...')
+    print('[NODE] Attempting to join LoRa network...')
     pkt = Packet.createJoinRequestPacket(self.id) 
     # send over LoRa (via ZeroMQ to C program) and wait for response
-    self.socket.send(pkt.SerializeToString())
+    pkt_str = Packet.encode_packet(pkt)
+    self.socket.send(pkt_str)
     # wait for response 
     resp = self.socket.recv()
     if resp == 'TR':
-      print('LoRa network request transmitted. Waiting for confirmation...')
+      print('[NODE] LoRa network request transmitted. Waiting for confirmation from basestation...')
     else:
-      print('Transmission ACK not received, instead: ', resp)
+      print('[NODE] Transmission ACK not received, instead: ', resp)
       return
     resp = self.socket.recv()
     if resp == 'JO':
       self.joined_lora = True
-      print('LoRa network joined successfully')    
+      print('[NODE] LoRa network joined successfully')    
     else:
-      print('Failed to join LoRa network')
+      print('[NODE] Failed to join LoRa network')
       
 
   def run(self):
@@ -174,7 +179,7 @@ class Node(threading.Thread):
         print('TODO receive lora')
       else:
         self.join_lora_network()
-    self.disconnect()
+    #self.disconnect()
 
   def disconnect(self):
     if self.dev is not None:
@@ -183,7 +188,7 @@ class Node(threading.Thread):
     if self.gps is not None:
       print("Killing GPS thread...")
       self.gps.stop()
-      self.gps.join() # wait for thread to finish
+      #self.gps.join() # wait for thread to finish
 
   def stop(self):
     self.running = False
@@ -243,36 +248,10 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
     return eco2, tvoc
 
   def getGPSData(self):
-    lat =  self.gps.getLatitude()
-    long = self.gps.getLongitude()
-    alt =  self.gps.getAltitude()
-    return lat, long, alt
-
-class GpsPoller(threading.Thread):
-  def __init__(self):
-    threading.Thread.__init__(self)
-    self.gpsd = gps(mode=WATCH_ENABLE) #starting the stream of info
-    self.current_value = None
-    self.running = True #setting the thread running to true
-
-  def getLatitude(self):
-    return self.gpsd.fix.latitude
-
-  def getLongitude(self):
-    return self.gpsd.fix.longitude
-
-  def getAltitude(self):
-    return self.gpsd.fix.altitude
-
-  def run(self):
-    i = 0
-    while self.running:
-      print('GPS still alive...')
-      self.gpsd.next() #this will continue to loop and grab EACH set of gpsd info to clear the buffer
-      i += 1
-
-  def stop(self):
-    self.running = False
+    print('Fetching GPS data...')
+    data = self.gps.getCurrent()
+    print('GPS data fetched')
+    return data['lat'], data['lon']
 
 def main():
   desired_data = [
@@ -288,7 +267,6 @@ def main():
   except Exception as e:
     print('Exception:')
     print(e)
-  finally:
     node.disconnect()
 if __name__ == '__main__':
   main()
