@@ -30,6 +30,7 @@ class Basestation():
         self.nodes = [
             Node(1)
         ]
+        self.id = 0
         self.available_data = {}
 
     def open_socket(self):
@@ -48,18 +49,11 @@ class Basestation():
         node_sensors = self.decode_available_data(pkt.payload)
         node = Node(id,sensors_available=node_sensors)
         self.nodes.append(node)
-        s.send()
+        response = Packet.createJoinResponsePacket(self.id)
+        response = Packet.encode_packet(response)
+        self.s.send(response)
+        print("Sent join acknowledgement")
 
-
-    def create_sensor_request(self, id, sensor_type):
-        request = b''
-        # append ID
-        request += id
-        # append message type
-        request += MessageType.SENSOR_REQUEST
-        # append sensor type (payload)
-        request += sensor_type
-        return request
 
     def decode_available_data(self, data):
         if len(data) < 3:
@@ -95,47 +89,51 @@ class Basestation():
         # nodes must join within 60 seconds of basestation activation
         print("Looking for connections...")
         self.s.setblocking(False)
-        t_end = time.time() + 90
+        t_end = time.time() + 190
         while time.time() < t_end:
+            while True:
+                print('sending...')
+                self.s.send(b'000abcdeddd')
+                time.sleep(5)
             rx, port = self.s.recvfrom(256)
 
             # rx is a bit stream
             if rx:
+                print(rx)
                 pkt = Packet.decode_packet(rx)
-                print(pkt.type, pkt.src_id)
-                if pkt.type == MessageType.JOIN:
+                print(pkt.type, pkt.src_id, )
+                if pkt.type == MessageType.JOIN_REQUEST:
                     print("Device found!")
                     self.join_request(pkt)
         print("Polling for data...")
         # main control loop
         while True:
 
-		rx, port = self.s.recvfrom(256)
-		if rx:
-			print(rx)
-
             # cycle through the sensors and find equipped nodes for each
-        for sensor_type in ALL_SENSORS:
-            for node in range(0,self.nodes):
-                # check if the node supports the sensor type
-                if sensor_type in node.sensors_available:
-                    # create packet
-                    pkt = self.create_sensor_request(node.id, sensor_type)
-                    # set blocking to avoid receiving whilst sending
-                    self.s.setblocking(True)
-                    self.s.send(pkt)
-                    # wait a little while
-                    time.sleep(4)
-                    # wait for response before doing anything else
-                    rx, port = self.s.recvfrom(256)
-                    # process response
-                    if rx:
-                        pkt = Packet.decode_packet(rx)
+            for sensor_type in ALL_SENSORS:
+                print('Getting ', sensor_type , ' data...')
+                for node in range(0,self.nodes):
+                    # check if the node supports the sensor type
+                    time.sleep(5)
+                    print('Polling node with id = ', node.id , '...')
 
-                        if pkt.type == MessageType.SENSOR_RESPONSE:
-                            self.record_sensor_data(pkt)
-                        else:
-                            log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
+                    if sensor_type in node.sensors_available:
+                        # create packet
+                        pkt = Packet.create_sensor_request(node.id, sensor_type)
+                        pkt = Packet.encode_packet(pkt)
+                        # set blocking to avoid receiving whilst sending
+                        self.s.setblocking(True)
+                        self.s.send(pkt)
+                        # wait for response before doing anything else
+                        rx, port = self.s.recvfrom(256)
+                        # process response
+                        if rx:
+                            pkt = Packet.decode_packet(rx)
+
+                            if pkt.type == MessageType.SENSOR_RESPONSE:
+                                self.record_sensor_data(pkt)
+                            else:
+                                log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
 def main():
     base = Basestation([])
     base.start()
