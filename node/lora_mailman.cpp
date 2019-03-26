@@ -38,12 +38,18 @@
 // https://docs.google.com/spreadsheets/d/1voGAtQAjC1qBmaVuP1ApNKs1ekgUjavHuVQIXyYSvNc 
 #define TX_INTERVAL 2000
 
+// Dragino Raspberry PI hat (no onboard led)
+// see https://github.com/dragino/Lora
+#define RF_CS_PIN  22 // Slave Select on GPIO25 so P1 connector pin #22
+#define RF_IRQ_PIN 7 // IRQ on GPIO4 so P1 connector pin #7
+#define RF_RST_PIN 11 // Reset on GPIO17 so P1 connector pin #11
+
 // Pin mapping
 lmic_pinmap pins = {
-  .nss = 6,
-  .rxtx = UNUSED_PIN, // Not connected on RFM92/RFM95
-  .rst = 0,  // Needed on RFM92/RFM95
-  .dio = {7,4,5}
+    .nss = RF_CS_PIN,//  .nss = 6,
+    .rxtx = UNUSED_PIN,//  .rxtx = UNUSED_PIN, // Not connected on RFM92/RFM95
+    .rst = RF_RST_PIN,//.rst = 0,  // Needed on RFM92/RFM95
+    .dio = {UNUSED_PIN, UNUSED_PIN, UNUSED_PIN}//.dio = {7,4,5}
 };
 
 // These callbacks are only used in over-the-air activation, so they are
