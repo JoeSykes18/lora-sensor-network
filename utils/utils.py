@@ -26,11 +26,11 @@ class Packet():
     self.payload = payload
 
   @staticmethod
-  def createJoinRequestPacket(id):
-    src_id = bytes(id)
-    dest_id = bytes(0)
-    msg_type = bytes(MessageType.JOIN_REQUEST)
-    payload = bytes(0)
+  def createJoinRequestPacket(id, available_sensors=[]):
+    src_id = id
+    dest_id = 0
+    msg_type = MessageType.JOIN_REQUEST
+    payload = Packet.encode_available_sensors(available_sensors)
 
     return Packet(src_id, dest_id, msg_type, payload)
 
@@ -55,4 +55,19 @@ class Packet():
 
   @staticmethod
   def encode_packet(packet):
-    return bytearray([packet.src_id, packet.dest_id, packet.type, packet.payload])
+    return bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload)
+
+  @staticmethod
+  def encode_available_sensors(sensors):
+    output = ['0', '0', '0', '0']
+    if 'temperature' in sensors:
+      output[0] = '1'
+    if 'humidity' in sensors:
+      output[1] = '1'
+    if 'gas' in sensors:
+      output[2] = '1'
+    if 'pressure' in sensors:
+      output[3] = '1'
+    return output
+
+
