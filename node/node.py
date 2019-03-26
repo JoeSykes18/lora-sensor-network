@@ -7,7 +7,7 @@ import threading
 import zmq
 from gps import *
 from bluepy import btle, thingy52
-from utils import Packet, MessageType
+from utils.utils import Packet, MessageType
 from gpsinterface import GpsInterface
 
 DATA_FOLDER = "../data"
@@ -149,7 +149,7 @@ class Node(threading.Thread):
 
   def join_lora_network(self):
     print('[NODE] Attempting to join LoRa network...')
-    pkt = Packet.createJoinRequestPacket(self.id) 
+    pkt = Packet.createJoinRequestPacket(self.id, self.desired_data) 
     # send over LoRa (via ZeroMQ to C program) and wait for response
     pkt_str = Packet.encode_packet(pkt)
     self.socket.send(pkt_str)
