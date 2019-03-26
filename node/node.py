@@ -7,7 +7,7 @@ import threading
 import zmq
 from gps import *
 from bluepy import btle, thingy52
-from utils.utils import Packet, MessageType
+from utils import Packet, MessageType
 from gpsinterface import GpsInterface
 
 DATA_FOLDER = "../data"
@@ -268,5 +268,7 @@ def main():
     print('Exception:')
     print(e)
     node.disconnect()
-if __name__ == '__main__':
+if __name__ == '__main__' and __package__ is None:
+  from os import sys, path
+  sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
   main()
