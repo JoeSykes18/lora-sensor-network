@@ -7,8 +7,8 @@ from utils.utils import Packet, MessageType, SensorType
     designed to run on a LoPy
 '''
 
-LORA_FREQUENCY = 869525000
-lora = LoRa(mode=LoRa.LORA, frequency = LORA_FREQUENCY)
+LORA_FREQUENCY = 869000000
+lora = LoRa(mode=LoRa.LORA)
 ALL_SENSORS = [SensorType.TEMP, SensorType.HUMID, SensorType.AIR_QUAL, SensorType.PRESS]
 
 def log_print(msg):
@@ -92,16 +92,14 @@ class Basestation():
         t_end = time.time() + 190
         while time.time() < t_end:
             while True:
-                print('sending...')
-                self.s.send(b'000abcdeddd')
-                time.sleep(5)
-            rx, port = self.s.recvfrom(256)
-
+                rx = self.s.recv(256)
+                if rx:
+                    print(rx)
             # rx is a bit stream
             if rx:
                 print(rx)
                 pkt = Packet.decode_packet(rx)
-                print(pkt.type, pkt.src_id, )
+                print(pkt.type, pkt.src_id )
                 if pkt.type == MessageType.JOIN_REQUEST:
                     print("Device found!")
                     self.join_request(pkt)
@@ -133,7 +131,8 @@ class Basestation():
                             if pkt.type == MessageType.SENSOR_RESPONSE:
                                 self.record_sensor_data(pkt)
                             else:
-                                log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
+                                print(rx)
+                                #log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
 def main():
     base = Basestation([])
     base.start()
