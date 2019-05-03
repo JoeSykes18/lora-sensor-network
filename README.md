@@ -38,7 +38,7 @@ Roughly follow these steps: http://wiki.dragino.com/index.php?title=Connect_to_T
 
 ## Network Protocol
 
-Each node in the network has a 1-byte ID, with the basestation addressed as 0. Nodes request to join the network, and the basestation tracks all known nodes. Nodes receive their ID as a command-line parameter to simplify the protocol, so it is up to person starting the network to ensure there are no naming collisions. 
+Each node in the network has a 1-byte ID, with the basestation addressed as 0. Nodes request to join the network, and the basestation tracks all known nodes. Nodes receive their ID as a command-line parameter to simplify the protocol, so it is up to the person starting the network to ensure there are no naming collisions. 
 
 ### Packet structure
 
@@ -58,3 +58,35 @@ The message type can be any of:
 
 The structure of the payload for each message type is as follows:
 
+JOIN_REQUEST:
+
+The payload sent by the node contains information about the sensors it has available to it, so that the basestation can decide which data to request. 4 bytes are used for the 4 supported sensors (temperature, humidity, air quality {CO2 and TVOC}, and pressure). Each byte is 1 for available or 0 for unavailable. Note: this could be optimised to use a single byte with bit-flags.
+
+| Byte | 0               | 1                | 2                   | 3                |
+|------|-----------------|------------------|---------------------|------------------|
+| Item | temp. available | humid. available | air qual. available | press. available | 
+
+
+JOIN_RESPONSE:
+
+The payload is a single byte of value 0.
+
+| Byte | 0               | 
+|------|-----------------|
+| Item | 0               | 
+
+SENSOR_REQUEST:
+
+The basestation requests a single sensor data item, so the payload here includes which data is needed to be sent back. The sensor type is a number 0-4 encoded as ASCII. 
+
+| Byte | 0                | 
+|------|------------------|
+| Item | Sensor type (0-4)| 
+
+SENSOR_RESPONSE:
+
+The node returns sensor data, with the payload containing the result. Most sensor types return a single byte but air quality returns two bytes (CO2 and TVOC).
+
+| Byte | 0                | 1                |
+|------|------------------|------------------|
+| Item | Sensor data      | More sensor data |
