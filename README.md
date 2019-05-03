@@ -7,6 +7,8 @@ A star network topology is used, with a LoPy acting as the basestation. The node
 
 Only a single node has been tested/demonstrated but the network protocol has capacity for an arbitrary number of nodes.
 
+![Network architecture diagram](images/network_architecture_diagram.png?raw=true "Network architecture diagram")
+
 ## Equipment used
 
 - PyCom LoPy 1.0 [product page](https://www.adafruit.com/product/3339)
