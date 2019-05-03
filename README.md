@@ -9,32 +9,45 @@ Only a single node has been tested/demonstrated but the network protocol has cap
 
 ## Equipment used
 
-- PyCom LoPy 1.0
-- Raspberry Pi model 3B
-- Dragino LoRa GPS Hat (Hope RF95 with SX1276 transceiver)
-- Nordic Thingy:52 (https://www.nordicsemi.com/Software-and-Tools/Development-Kits/Nordic-Thingy-52)
+- PyCom LoPy 1.0 [product page](https://www.adafruit.com/product/3339)
+- Raspberry Pi model 3B [product page](https://www.raspberrypi.org/products/raspberry-pi-3-model-b/)
+- Dragino LoRa GPS Hat (Hope RF95 with SX1276 transceiver) [product page](http://www.dragino.com/products/module/item/106-lora-gps-hat.html)
+- Nordic Thingy:52 [product page](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/Nordic-Thingy-52)
 
 ## Setup
 
 ### Raspberry Pi Node
-A Raspberry Pi 3B was used to connect to a Nordic Thingy 52 forming the nodes on the network. The Pi Zero is equipped with Bluetooth LE meaning it is capable of communicating with the Thingy.
+A Raspberry Pi 3B is used to connect to a Thingy:52 via BTLE. This setup guide assumes a fresh install of Raspbian 9 (Stretch). The [pySX1276 library](https://github.com/mayeranalytics/pySX127x) is used for LoRa communications and [bluepy](https://github.com/IanHarvey/bluepy) is used for BTLE communications.
 
-The python `bluepy` library was used for communications. The following tutorials helped:
-https://www.elinux.org/RPi_Bluetooth_LE
-https://stackoverflow.com/questions/32947807/cannot-connect-to-ble-device-on-raspberry-pi
+1. Clone this repository
+2. Install a number of python packages. Superuser privileges are required to run the node's Python script, so install with `sudo` to ensure the packages are available:
+```
+sudo apt-get install libglib2.0-dev
+sudo pip install bluepy
+sudo pip install gps
 
+# pySX1276 installation instructions:
+wget https://pypi.python.org/packages/source/s/spidev/spidev-3.1.tar.gz
+tar xfvz  spidev-3.1.tar.gz
+cd spidev-3.1
+sudo python setup.py install
+```
+3. Edit the Raspbian configuration file to enable SPI and UART, and to move the Pi's bluetooth connection to mini UART (to enable the GPS hat to use the PL011 UART), and to assign the SPI chip select to pin 25 (a fix as per [this forum post](https://github.com/mayeranalytics/pySX127x/issues/21#issuecomment-444596565)) 
 
-### Dragino LoRa/GPS Hat with TTN
+```
+sudo vim /boot/config.txt
 
-Roughly follow these steps: http://wiki.dragino.com/index.php?title=Connect_to_TTN#Use_LoRa_GPS_HAT_and_RPi_3_as_LoRa_End_Device
+# Uncomment these lines:
+dtparam=spi=on
+enable_uart=1
 
-1. Add new device on TTN portal
-2. Choose ABP authentication
-3. Generate APP/DEV/NSK keys
-4. Use the 'thingsnetwork-send-v1' example from this repo https://github.com/dragino/lmic_pi/archive/master.zip
-5. Find config.h and uncomment the define directive for EU868, and comment the US961 one.
-6. Update the define directives for the DEV_ADDR, ARTKEY, etc. in the thingsnetwork-send-v1 file.
-7. Compile and run the file above
+# Add these lines:
+dtoverlay=pi3-disable-bt
+dtoverlay=spi0-cs,cs0_pin=25
+
+# Reboot to take effect
+sudo reboot
+```
 
 ## Network Protocol
 
