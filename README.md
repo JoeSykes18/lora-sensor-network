@@ -50,6 +50,18 @@ dtoverlay=spi0-cs,cs0_pin=25
 # Reboot to take effect
 sudo reboot
 ```
+4. To start the node, run node.py in the node directory of the repository. Provide an ID for the node (value 1-7), ensuring there are no active nodes with this ID. Ensure the GPS hat is attached with the antennas before starting. Ensure the Thingy:52 setup guide has been followed and the device is on, if required.
+```
+sudo python node.py <id>
+```
+
+### Thingy:52 Sensor
+The Thingy:52 is found and paired using its bluetooth device name. To use a Thingy:52 with the Raspberry Pi node, change the device name to 'LoRaSensor'. This can be achieved using one of the [mobile apps](https://www.nordicsemi.com/Software-and-Tools/Development-Tools/Nordic-Thingy-52-App) for the device. 
+
+### LoPy basestation
+
+1. Clone the repository onto the LoPy
+2. Install packages... TODO 
 
 ## Network Protocol
 
@@ -82,7 +94,7 @@ The payload sent by the node contains information about the sensors it has avail
 | Item | temp. available | humid. available | air qual. available | press. available | 
 
 
-JOIN_RESPONSE:
+JOIN_ACK:
 
 The payload is a single byte of value 0.
 
