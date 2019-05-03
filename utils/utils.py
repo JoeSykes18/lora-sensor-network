@@ -1,4 +1,4 @@
-  ''' Enum for the types of message that are produced
+''' Enum for the types of message that are produced
 '''
 class MessageType():
   JOIN_REQUEST = 0
@@ -63,7 +63,7 @@ class Packet():
 
   @staticmethod
   def encode_packet(packet):
-    return bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload)
+    return list(bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload))
 
   @staticmethod
   def encode_available_sensors(sensors):

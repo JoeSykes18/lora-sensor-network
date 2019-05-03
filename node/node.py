@@ -4,11 +4,14 @@ import binascii
 import time
 import os
 import threading
-import zmq
 from gps import *
 from bluepy import btle, thingy52
 from utils import Packet, MessageType
 from gpsinterface import GpsInterface
+from SX127x.LoRa import *
+from SX127x.LoRaArgumentParser import LoRaArgumentParser
+from SX127x.board_config import BOARD
+from lora import LoRaUtil
 
 DATA_FOLDER = "../data"
 TEMP_DATA_FILE = "../data/temperature.csv"
@@ -48,8 +51,8 @@ class Node(threading.Thread):
     self.joined_lora = False
     self.running = True
     
+    #self.init_lora()
     self.init_files()
-    self.init_mq()
     self.init_gps()
 
   def init_files(self):
@@ -69,12 +72,11 @@ class Node(threading.Thread):
       with open(HUMIDITY_DATA_FILE, 'w') as f:
         f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
 
-  def init_mq(self):
-    self.mq = zmq.Context()
-    print('Connecting to ZMQ server...')
-    self.socket = self.mq.socket(zmq.REQ)
-    self.socket.connect('tcp://localhost:5555')
-    print('Connected to ZMQ')
+  def init_lora(self):
+    BOARD.setup()
+    self.lora = LoRaUtil(verbose=False)
+    self.lora_thread = threading.Thread(target=self.lora.start)
+    self.lora_thread.start()
 
   def init_gps(self):
     print('Starting GPS thread...')
@@ -152,15 +154,17 @@ class Node(threading.Thread):
     pkt = Packet.createJoinRequestPacket(self.id, self.desired_data) 
     # send over LoRa (via ZeroMQ to C program) and wait for response
     pkt_str = Packet.encode_packet(pkt)
-    self.socket.send(pkt_str)
+    while True:
+      self.lora.send(pkt_str)
+      time.sleep(3)
     # wait for response 
-    resp = self.socket.recv()
+    resp = self.lora.recv()
     if resp == 'TR':
       print('[NODE] LoRa network request transmitted. Waiting for confirmation from basestation...')
     else:
       print('[NODE] Transmission ACK not received, instead: ', resp)
       return
-    resp = self.socket.recv()
+    resp = self.lora.recv()
     if resp == 'JO':
       self.joined_lora = True
       print('[NODE] LoRa network joined successfully')    
