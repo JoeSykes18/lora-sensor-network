@@ -52,7 +52,7 @@ class LoRaUtil(LoRa):
  
     def on_rx_done(self):
         BOARD.led_on()
-        print("\nRxDone")
+        print("\n[LoRa] RxDone")
         self.clear_irq_flags(RxDone=1)
         payload = self.read_payload(nocheck=True)
         self.rx_buffer.append(payload)

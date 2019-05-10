@@ -1,4 +1,5 @@
 import threading
+import time
 
 GPS_PORT = "/dev/ttyS0"
 HEADER = "$GPRMC"
@@ -12,11 +13,14 @@ class GpsInterface(threading.Thread):
 
   def run(self):
     self.running = True
+    last_print = 0
     while self.running:
       line = self.port.readline()
       if line[0:6] == HEADER:
 	self.current = self.parseGps(line)
-	#print(self.current)
+      if last_print < time.time() - 10 and self.current:
+        last_print = time.time()
+        print('[GPS] Current location: (%s, %s)' % (self.current['lat'], self.current['lon']))
 
   def stop(self):
     self.running = False

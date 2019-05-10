@@ -6,7 +6,7 @@ import os
 import threading
 from gps import *
 from bluepy import btle, thingy52
-from utils import Packet, MessageType
+from utils import Packet, MessageType, SensorType
 from gpsinterface import GpsInterface
 from SX127x.LoRa import *
 from SX127x.LoRaArgumentParser import LoRaArgumentParser
@@ -14,10 +14,10 @@ from SX127x.board_config import BOARD
 from lora import LoRaUtil
 
 DATA_FOLDER = "../data"
-TEMP_DATA_FILE = "../data/temperature.csv"
-PRESSURE_DATA_FILE = "../data/pressure.csv"
-GAS_DATA_FILE = "../data/gas.csv"
-HUMIDITY_DATA_FILE = "../data/humidity.csv"
+TEMP_DATA_FILE = "../data/TEMP.csv"
+PRESSURE_DATA_FILE = "../data/PRESS.csv"
+GAS_DATA_FILE = "../data/AIR_QUAL.csv"
+HUMIDITY_DATA_FILE = "../data/HUMID.csv"
 
 PRINT_BTLE_DEVICES = False
 
@@ -58,21 +58,21 @@ class Node(threading.Thread):
         self.init_gps()
 
     def init_files(self):
-        print('Initialising files...')
+        print('[NODE] Initialising files...')
         if not os.path.exists(DATA_FOLDER):
             os.makedirs(DATA_FOLDER)
         if not os.path.isfile(TEMP_DATA_FILE):
             with open(TEMP_DATA_FILE, 'w') as f:
-                f.write('timestamp, temperature(deg C), latitude, longitude, altitude\n')
+                f.write('timestamp,temperature,latitude,longitude\n')
         if not os.path.isfile(PRESSURE_DATA_FILE):
             with open(PRESSURE_DATA_FILE, 'w') as f:
-                f.write('timestamp, pressure (hPa), latitude, longitude, altitude\n')
+                f.write('timestamp,pressure,latitude,longitude\n')
         if not os.path.isfile(GAS_DATA_FILE):
             with open(GAS_DATA_FILE, 'w') as f:
-                f.write('timestamp, eCO2 (ppm), TVOC (ppb), latitude, longitude, altitude\n')
+                f.write('timestamp,eCO2,TVOC,latitude,longitude\n')
         if not os.path.isfile(HUMIDITY_DATA_FILE):
             with open(HUMIDITY_DATA_FILE, 'w') as f:
-                f.write('timestamp, humidity (%), latitude, longitude, altitude\n')
+                f.write('timestamp,humidity,latitude,longitude\n')
 
     def init_lora(self):
         BOARD.setup()
@@ -81,7 +81,7 @@ class Node(threading.Thread):
         self.lora_thread.start()
 
     def init_gps(self):
-        print('Starting GPS thread...')
+        print('[NODE] Starting GPS thread...')
         self.gps = GpsInterface()
         self.gps.start()
 
@@ -89,16 +89,16 @@ class Node(threading.Thread):
         # enable environmental interface
         self.dev.environment.enable()
         # enable each sensor
-        if 'temperature' in self.desired_data:
+        if SensorType.TEMP in self.desired_data:
             self.dev.environment.configure(temp_int=1000)
             self.dev.environment.set_temperature_notification(True)
-        if 'pressure' in self.desired_data:
+        if SensorType.PRESS in self.desired_data:
             self.dev.environment.configure(press_int=1000)
             self.dev.environment.set_pressure_notification(True)
-        if 'humidity' in self.desired_data:
+        if SensorType.HUMID in self.desired_data:
             self.dev.environment.configure(humid_int=1000)
             self.dev.environment.set_humidity_notification(True)
-        if 'gas' in self.desired_data:
+        if SensorType.AIR_QUAL in self.desired_data:
             self.dev.environment.configure(gas_mode_int=1)
             self.dev.environment.set_gas_notification(True)
 
@@ -113,8 +113,8 @@ class Node(threading.Thread):
         e_humidity_handle = self.dev.environment.humidity_char.getHandle()
         e_gas_handle = self.dev.environment.gas_char.getHandle()
 
-        handles = {e_temperature_handle: 'temperature', e_pressure_handle: 'pressure',
-                e_humidity_handle: 'humidity', e_gas_handle: 'gas'}
+        handles = {e_temperature_handle: SensorType.TEMP, e_pressure_handle: SensorType.PRESS,
+                e_humidity_handle: SensorType.HUMID, e_gas_handle: SensorType.AIR_QUAL}
 
     def scan_for_thingy(self):
         print("[NODE] Scanning for BTLE devices")
@@ -145,8 +145,7 @@ class Node(threading.Thread):
 
         self.enable_sensors()
 
-        #self.dev.setDelegate(LoRaSenseDelegate(self.gps))
-        self.dev.setDelegate(LoRaSenseDelegate(None))
+        self.dev.setDelegate(LoRaSenseDelegate(self.gps))
 
         return True
 
@@ -154,11 +153,9 @@ class Node(threading.Thread):
         end = time.time() + timeout
         while time.time() < end:
                 resp = self.lora.recv()
-                print(resp)
+                print('[NODE] Received: %s' % str(resp))
                 if resp:
                         pkt = Packet.decode_packet(resp)
-                        print(pkt)
-                        print('Selfid=', self.id)
                         if pkt.src_id == src_id and pkt.dest_id == self.id and pkt.type == msg_type:
                                 return pkt
         return False
@@ -179,6 +176,55 @@ class Node(threading.Thread):
             else:
                 print('[NODE] Failed to join LoRa network, retrying...')
 
+    def readLastLineInFile(self, name):
+        with open(name, 'r') as f:
+            lines = f.read().splitlines()
+            if len(lines) < 2:
+                return None
+            line = lines[-1]
+            tokens = line.split(',')
+            tokens[0] = float(tokens[0])
+            tokens[1] = float(tokens[1])
+            return tokens
+
+    def getLatestData(self, sensorType):
+        data = []
+        fileName = None
+        if sensorType == SensorType.TEMP:
+            fileName = TEMP_DATA_FILE
+        elif sensorType == SensorType.HUMID:
+            fileName = HUMIDITY_DATA_FILE
+        elif sensorType == SensorType.AIR_QUAL:
+            fileName = GAS_DATA_FILE
+        elif sensorType == SensorType.PRESS:
+            fileName = PRESSURE_DATA_FILE
+        
+        print('File:',fileName)
+
+        if fileName is not None:
+            return self.readLastLineInFile(fileName)
+        else:
+            return None
+    
+    def handleSensorRequest(self, pkt):
+        if len(pkt.payload) != 1:
+            return False
+
+        sensorType = pkt.payload[0]
+
+        # check sensor type is compatible
+        if sensorType in self.desired_data:
+            data = self.getLatestData(sensorType)
+            if data is None:
+                print('[NODE] Failed to find data of type %d' % sensorType)
+                return
+            pkt = Packet.createSensorResponse(self.id, sensorType, data)
+            print(pkt)
+            print('[NODE] Sending sensor response for sensor type %d' % sensorType)
+            rawpkt = Packet.encode_packet(pkt)
+            print(rawpkt)
+            self.lora.send(rawpkt)
+
     def run(self):
         while self.running:
             if self.dev is None:
@@ -187,7 +233,9 @@ class Node(threading.Thread):
                 self.dev.waitForNotifications(POLL_TIME)
 
             if self.joined_lora:
-                print('TODO receive lora')
+                pkt = self.waitForPacket(0, MessageType.SENSOR_REQUEST)
+                if pkt:
+                    self.handleSensorRequest(pkt)
             else:
                 self.join_lora_network()
         #self.disconnect()
@@ -216,15 +264,15 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
             temp = binascii.b2a_hex(data)
             msg = '{}.{}'.format(
                         self._str_to_int(temp[:-2]), int(temp[-2:],16))
-            print('Temp received:', msg, 'degC')
+            print('[BTLEDelegate] Temp received:', msg, 'degC')
         elif hnd == e_pressure_handle:
             (press_int, press_dec) = self._extract_pressure_data(data)
             msg = '{}.{}'.format(press_int, press_dec)
-            print('Pressure received:', msg,'hPa')
+            print('[BTLEDelegate] Pressure received:', msg,'hPa')
         elif hnd == e_humidity_handle:
             hum = binascii.b2a_hex(data)
             msg = '{}'.format(self._str_to_int(hum))
-            print('Humidity received:', msg, '%')
+            print('[BTLEDelegate] Humidity received:', msg, '%')
         elif hnd == e_gas_handle:
             eco2, tvoc = self._extract_gas_data(data)
             msg = '{}, {}'.format(eco2, tvoc)
@@ -232,11 +280,12 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         else:
             return
 
-        lat, long, alt = self.getGPSData()
-        gps_msg = str(lat) + ', ' + str(long) + ',' + str(alt) 
+        lat, lon = self.getGPSData()
+        gps_msg = str(lat) + ',' + str(lon) 
         if msg is not None:
-            with open(handles[hnd] + '.csv', 'a') as f:
-                f.write(str(t) + ', ' + msg + ', ' + gps_msg + '\n')
+            filename = [TEMP_DATA_FILE, HUMIDITY_DATA_FILE, GAS_DATA_FILE, PRESSURE_DATA_FILE][handles[hnd]]
+            with open(filename, 'a') as f:
+                f.write(str(t) + ',' + msg + ',' + gps_msg + '\n')
 
     def _str_to_int(self, s):
         i = int(s, 16)
@@ -259,17 +308,21 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         return eco2, tvoc
 
     def getGPSData(self):
-        print('Fetching GPS data...')
+        print('[BTLEDelegate] Fetching GPS data...')
         data = self.gps.getCurrent()
-        print('GPS data fetched')
-        return data['lat'], data['lon']
+        print('[BTLEDelegate] GPS data fetched')
+        return self.convertCoord(data['lat']), self.convertCoord(data['lon'])
+
+    def convertCoord(self, coord):
+        tokens = coord.split(' ')
+        return tokens[0] + '"' + tokens[2]
 
 def main():
     desired_data = [
-            'temperature',
-            'humidity',
-            'pressure',
-            'gas'
+            SensorType.TEMP,
+            SensorType.HUMID,
+            SensorType.AIR_QUAL,
+            SensorType.PRESS
             ]
     node = Node(1, desired_data)
 

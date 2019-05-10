@@ -52,7 +52,6 @@ class Packet():
     dest = data[1]
     msg_type = data[2]
     payload = data[3:]
-    payload = [chr(c) for c in payload]
 
     return Packet(src, dest, msg_type, payload)
 
@@ -62,6 +61,21 @@ class Packet():
     dest_id = id
     msg_type = typeMessageType.SENSOR_REQUEST
     payload = sensor_type
+    return Packet(src_id, dest_id, msg_type, payload)
+
+  @staticmethod
+  def createSensorResponse(id, sensor_type, data):
+    src_id = id
+    dest_id = 0
+    msg_type = MessageType.SENSOR_RESPONSE
+    # split LAT/LON strings into list of chars
+    data[-1] = [c for c in data[-1]]
+    data[-2] = [c for c in data[-2]]
+    payload = [sensor_type]
+    if sensor_type == SensorType.AIR_QUAL:
+        payload.extend(data[0:4])
+    else:
+        payload.extend(data[0:3])
     return Packet(src_id, dest_id, msg_type, payload)
 
   @staticmethod
