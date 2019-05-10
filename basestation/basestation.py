@@ -8,7 +8,7 @@ from utils.utils import Packet, MessageType, SensorType
 '''
 
 LORA_FREQUENCY = 869000000
-lora = LoRa(mode=LoRa.LORA)
+lora = LoRa(mode=LoRa.LORA, frequency=LORA_FREQUENCY, public=False)
 ALL_SENSORS = [SensorType.TEMP, SensorType.HUMID, SensorType.AIR_QUAL, SensorType.PRESS]
 
 def log_print(msg):
@@ -28,7 +28,6 @@ class Basestation():
 
     def __init__(self, nodes):
         self.nodes = [
-            Node(1)
         ]
         self.id = 0
         self.available_data = {}
@@ -49,11 +48,14 @@ class Basestation():
         node_sensors = self.decode_available_data(pkt.payload)
         node = Node(id,sensors_available=node_sensors)
         self.nodes.append(node)
-        response = Packet.createJoinResponsePacket(self.id)
+        response = Packet.createJoinResponsePacket(id)
         response = Packet.encode_packet(response)
-        self.s.send(response)
+        print(response)
+        self.s.setblocking(True)
+        self.s.send(bytes(response))
+        self.s.setblocking(False)
         print("Sent join acknowledgement")
-
+        return True
 
     def decode_available_data(self, data):
         if len(data) < 3:
@@ -81,6 +83,17 @@ class Basestation():
         value = data[1:]
         # store
         print('Sensor type: %d, Value: %d' % (sensor_type, value))
+    def waitForPacket(self, id, msg_type, timeout):
+        end = time.time() + timeout
+        while time.time() < end:
+            rx = self.s.recv(256)
+            if rx:
+                print(rx)
+                pkt = Packet.decode_packet(rx)
+                if pkt.src_id == id or id == None:
+                    if pkt.type == msg_type and pkt.dest_id == 0:
+                        return pkt
+
 
     def start(self):
         print("Opening socket..")
@@ -89,20 +102,12 @@ class Basestation():
         # nodes must join within 60 seconds of basestation activation
         print("Looking for connections...")
         self.s.setblocking(False)
-        t_end = time.time() + 190
+        t_end = time.time() + 30
         while time.time() < t_end:
-            while True:
-                rx = self.s.recv(256)
-                if rx:
-                    print(rx)
-            # rx is a bit stream
-            if rx:
-                print(rx)
-                pkt = Packet.decode_packet(rx)
-                print(pkt.type, pkt.src_id )
-                if pkt.type == MessageType.JOIN_REQUEST:
-                    print("Device found!")
-                    self.join_request(pkt)
+            pkt = self.waitForPacket(None, MessageType.JOIN_REQUEST, 5)
+            if pkt:
+                print("Device found!")
+                self.join_request(pkt)
         print("Polling for data...")
         # main control loop
         while True:
@@ -110,7 +115,8 @@ class Basestation():
             # cycle through the sensors and find equipped nodes for each
             for sensor_type in ALL_SENSORS:
                 print('Getting ', sensor_type , ' data...')
-                for node in range(0,self.nodes):
+                time.sleep(5)
+                for node in self.nodes:
                     # check if the node supports the sensor type
                     time.sleep(5)
                     print('Polling node with id = ', node.id , '...')
@@ -122,6 +128,7 @@ class Basestation():
                         # set blocking to avoid receiving whilst sending
                         self.s.setblocking(True)
                         self.s.send(pkt)
+                        self.s.setblocking(False)
                         # wait for response before doing anything else
                         rx, port = self.s.recvfrom(256)
                         # process response
