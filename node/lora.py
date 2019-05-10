@@ -40,7 +40,10 @@ class LoRaUtil(LoRa):
     def init_lora(self, verbose):
         parser = LoRaArgumentParser("LoRa util")
 	args = parser.parse_args(self)
-	print(self)
+        if verbose:
+            print(self)
+        else:
+            print('[LoRa] Initialising with FREQUENCY=%f' % self.get_freq())
 	self.set_mode(MODE.STDBY)
 	self.set_pa_config(pa_select=1)
 	assert(self.get_agc_auto_on() == 1)
@@ -85,7 +88,7 @@ class LoRaUtil(LoRa):
     def send(self, pkt):
 	self.write_payload(pkt)
 	self.set_mode(MODE.TX)
-        print('[LoRa] Payload written:', pkt)
+        print('[LoRa] Payload written: %s' % str(pkt))
 
     def recv(self):
         self.set_mode(MODE.RXCONT)
