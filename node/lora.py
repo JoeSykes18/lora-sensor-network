@@ -23,7 +23,7 @@
 
 
 import threading
-from time import sleep
+import time
 from SX127x.LoRa import *
 from SX127x.LoRaArgumentParser import LoRaArgumentParser
 from SX127x.board_config import BOARD
@@ -31,10 +31,11 @@ from SX127x.board_config import BOARD
 BOARD.setup()
 
 class LoRaUtil(LoRa):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, recv_timeout=10):
         super(LoRaUtil, self).__init__()
 	self.init_lora(verbose)
 	self.rx_buffer = []
+        self.recv_timeout = recv_timeout
  
     def init_lora(self, verbose):
         parser = LoRaArgumentParser("LoRa util")
@@ -51,7 +52,7 @@ class LoRaUtil(LoRa):
         print("\nRxDone")
         self.clear_irq_flags(RxDone=1)
         payload = self.read_payload(nocheck=True)
-        self.rx_buffer.append(payload.decode())
+        self.rx_buffer.append(payload)
         self.set_mode(MODE.SLEEP)
         self.reset_ptr_rx()
         BOARD.led_off()
@@ -84,11 +85,15 @@ class LoRaUtil(LoRa):
     def send(self, pkt):
 	self.write_payload(pkt)
 	self.set_mode(MODE.TX)
-	print('[LoRa] Payload written')
+        print('[LoRa] Payload written:', pkt)
 
     def recv(self):
+        self.set_mode(MODE.RXCONT)
+        end = time.time() + self.recv_timeout
 	while(len(self.rx_buffer) == 0):
-	  sleep(0.1)
+	  time.sleep(0.1)
+          if time.time() >= end:
+              return False
 	item = self.rx_buffer[0]
 	self.rx_buffer = self.rx_buffer[1:]
 	return item
@@ -99,7 +104,7 @@ class LoRaUtil(LoRa):
         
 	try: 
 	  while 1:
-	      sleep(.1)
+	      time.sleep(.1)
 	except KeyboardInterrupt:
 	  print('[LoRa] Keyboard interrupt')
 	finally:

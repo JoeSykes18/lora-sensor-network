@@ -25,12 +25,15 @@ class Packet():
     self.type = msg_type
     self.payload = payload
 
+  def __str__(self):
+    return ('Packet: src_id=%d | dest_id=%d | msg_type=%d | payload=' % (self.src_id, self.dest_id, self.type)) + str(self.payload)
+
   @staticmethod
   def createJoinRequestPacket(id, available_sensors=[]):
     src_id = id
     dest_id = 0
     msg_type = MessageType.JOIN_REQUEST
-    payload = Packet.encode_available_sensors(available_sensors)
+    payload = Packet.encodeAvailableSensors(available_sensors)
 
     return Packet(src_id, dest_id, msg_type, payload)
 
@@ -45,8 +48,8 @@ class Packet():
   @staticmethod
   def decode_packet(data):
     # first byte is ID
-    src = chr(data[0])
-    dest = chr(data[1])
+    src = data[0]
+    dest = data[1]
     msg_type = data[2]
     payload = data[3:]
     payload = [chr(c) for c in payload]
@@ -66,14 +69,14 @@ class Packet():
     return list(bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload))
 
   @staticmethod
-  def encode_available_sensors(sensors):
-    output = ['0', '0', '0', '0']
+  def encodeAvailableSensors(sensors):
+    output = [0, 0, 0, 0]
     if 'temperature' in sensors:
-      output[0] = '1'
+      output[0] = 1
     if 'humidity' in sensors:
-      output[1] = '1'
+      output[1] = 1
     if 'gas' in sensors:
-      output[2] = '1'
+      output[2] = 1
     if 'pressure' in sensors:
-      output[3] = '1'
+      output[3] = 1
     return output
