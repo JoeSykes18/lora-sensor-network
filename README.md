@@ -114,6 +114,6 @@ SENSOR_RESPONSE:
 
 The node returns sensor data, with the payload containing the result. Most sensor types return a single byte but air quality returns two bytes (CO2 and TVOC).
 
-| Byte | 0                | 1                |
-|------|------------------|------------------|
-| Item | Sensor data      | More sensor data |
+| Byte | 0                | 1                | 2                | ...              |
+|------|------------------|------------------|------------------|------------------|
+| Item | Latitude         | Longitude        | Sensor data      | More sensor data |
