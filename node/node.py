@@ -4,9 +4,10 @@ import binascii
 import time
 import os
 import threading
+import math
 from gps import *
 from bluepy import btle, thingy52
-from utils import Packet, MessageType, SensorType, encodeGpsCoord
+from utils import Packet, MessageType, SensorType
 from gpsinterface import GpsInterface
 from SX127x.LoRa import *
 from SX127x.LoRaArgumentParser import LoRaArgumentParser
@@ -20,13 +21,14 @@ GAS_DATA_FILE = "../data/AIR_QUAL.csv"
 HUMIDITY_DATA_FILE = "../data/HUMID.csv"
 
 PRINT_BTLE_DEVICES = False
+PRINT_BT_SERVICES = False
 
 # the enum for a bluetooth device's "short local name"
 SHORT_NAME_ADTYPE = 8
 # the short name that should be assigned to the Thingys
 THINGY_SHORT_NAME = "LoRaSens"
 # time between sensor polling
-POLL_TIME = 2.0
+POLL_TIME = 5.0
 
 MAX_LORA_JOIN_ATTEMPTS = 10
 
@@ -52,7 +54,8 @@ class Node(threading.Thread):
         self.gps = None
         self.joined_lora = False
         self.running = True
-        
+        self.btleThread = None
+
         self.init_lora()
         self.init_files()
         self.init_gps()
@@ -63,16 +66,16 @@ class Node(threading.Thread):
             os.makedirs(DATA_FOLDER)
         if not os.path.isfile(TEMP_DATA_FILE):
             with open(TEMP_DATA_FILE, 'w') as f:
-                f.write('timestamp,temperature,latitude,longitude\n')
+                f.write('timestamp,lat_deg,lat_min,lat_sec,lon_deg,lon_min,lon_sec,temp_units,temp_float\n')
         if not os.path.isfile(PRESSURE_DATA_FILE):
             with open(PRESSURE_DATA_FILE, 'w') as f:
-                f.write('timestamp,pressure,latitude,longitude\n')
+                f.write('timestamp,lat_deg,lat_min,lat_sec,lon_deg,lon_min,lon_sec,pressure_units,pressure_float\n')
         if not os.path.isfile(GAS_DATA_FILE):
             with open(GAS_DATA_FILE, 'w') as f:
-                f.write('timestamp,eCO2,TVOC,latitude,longitude\n')
+                f.write('timestamp,lat_deg,lat_min,lat_sec,lon_deg,lon_min,lon_sec,eCO2,TVOC\n')
         if not os.path.isfile(HUMIDITY_DATA_FILE):
             with open(HUMIDITY_DATA_FILE, 'w') as f:
-                f.write('timestamp,humidity,latitude,longitude\n')
+                f.write('timestamp,lat_deg,lat_min,lat_sec,lon_deg,lon_min,lon_sec,humidity\n')
 
     def init_lora(self):
         BOARD.setup()
@@ -141,13 +144,35 @@ class Node(threading.Thread):
         print("[NODE] Connecting to Thingy...")
         self.dev = thingy52.Thingy52(mac_addr)
 
-        print("[NODE] Connected. Enabling sensors...")
+        print("[NODE] Connected.")
+
+        if PRINT_BT_SERVICES:
+            print('[NODE] Bluetooth services:')
+            services = self.dev.discoverServices()
+            for service in services.values():
+                descs = service.getDescriptors()
+                for desc in descs:
+                    print(desc)
 
         self.enable_sensors()
 
+        print("[NODE] Enabled sensors.")
+
         self.dev.setDelegate(LoRaSenseDelegate(self.gps))
 
+        print("[NODE] Starting BTLE listener thread...")
+        
+        self.btleThread = threading.Thread(target=self.btleListenLoop)
+        self.btleThread.start()
+    
+        print("[NODE] BTLE listener started")
+
         return True
+
+    def btleListenLoop(self):
+        while True:
+            self.dev.waitForNotifications(POLL_TIME)
+            time.sleep(1)
 
     def waitForPacket(self, src_id, msg_type, timeout=30):
         end = time.time() + timeout
@@ -183,8 +208,7 @@ class Node(threading.Thread):
                 return None
             line = lines[-1]
             tokens = line.split(',')
-            tokens[0] = float(tokens[0])
-            tokens[1] = float(tokens[1])
+            tokens[1:] = [int(t) for t in tokens[1:]]
             return tokens
 
     def getLatestData(self, sensorType):
@@ -198,8 +222,6 @@ class Node(threading.Thread):
             fileName = GAS_DATA_FILE
         elif sensorType == SensorType.PRESS:
             fileName = PRESSURE_DATA_FILE
-        
-        print('File:',fileName)
 
         if fileName is not None:
             return self.readLastLineInFile(fileName)
@@ -208,6 +230,7 @@ class Node(threading.Thread):
     
     def handleSensorRequest(self, pkt):
         if len(pkt.payload) != 1:
+            print('[NODE] Received a sensor request with no payload, ignoring')
             return False
 
         sensorType = pkt.payload[0]
@@ -222,15 +245,13 @@ class Node(threading.Thread):
             print(pkt)
             print('[NODE] Sending sensor response for sensor type %d' % sensorType)
             rawpkt = Packet.encode_packet(pkt)
-            print(rawpkt)
+            print('Raw packet: ', rawpkt)
             self.lora.send(rawpkt)
 
     def run(self):
         while self.running:
             if self.dev is None:
                 self.scan_for_thingy()
-            else:
-                self.dev.waitForNotifications(POLL_TIME)
 
             if self.joined_lora:
                 pkt = self.waitForPacket(0, MessageType.SENSOR_REQUEST)
@@ -260,32 +281,45 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
     def handleNotification(self, hnd, data):
         t = time.time()
         msg = None
+        vals = []
         if hnd == e_temperature_handle:
             temp = binascii.b2a_hex(data)
             msg = '{}.{}'.format(
                         self._str_to_int(temp[:-2]), int(temp[-2:],16))
-            print('[BTLEDelegate] Temp received:', msg, 'degC')
+            print('[BTLEDelegate] Temp (C) received: %s' % msg)
+            vals = self.splitFloatToStr(msg)
         elif hnd == e_pressure_handle:
             (press_int, press_dec) = self._extract_pressure_data(data)
             msg = '{}.{}'.format(press_int, press_dec)
-            print('[BTLEDelegate] Pressure received:', msg,'hPa')
+            print('[BTLEDelegate] Pressure (hPa) received: %s %s' % (msg,'hPa'))
+            vals = self.splitFloatToStr(msg)
         elif hnd == e_humidity_handle:
             hum = binascii.b2a_hex(data)
             msg = '{}'.format(self._str_to_int(hum))
-            print('[BTLEDelegate] Humidity received:', msg, '%')
+            print('[BTLEDelegate] Humidity (percent) received: %s' % msg)
+            vals = [msg]
         elif hnd == e_gas_handle:
             eco2, tvoc = self._extract_gas_data(data)
             msg = '{}, {}'.format(eco2, tvoc)
-            print('AQ received: eCO2', eco2, 'ppm', 'TVOC ppb:', tvoc)
+            print('[BTLEDelegate] AQ received: eCO2 %s, TVOC ppb: %s' % (eco2, tvoc))
+            vals = [eco2, tvoc]
         else:
             return
 
         lat, lon = self.getGPSData()
-        gps_msg = str(lat) + ',' + str(lon) 
+        lat_str = [str(n) for n in lat]
+        lon_str = [str(n) for n in lon]
+        gps_msg = ",".join(lat_str) + ',' + ",".join(lon_str) 
         if msg is not None:
             filename = [TEMP_DATA_FILE, HUMIDITY_DATA_FILE, GAS_DATA_FILE, PRESSURE_DATA_FILE][handles[hnd]]
             with open(filename, 'a') as f:
-                f.write(str(t) + ',' + msg + ',' + gps_msg + '\n')
+                f.write(str(t) + ',' + gps_msg + ',' + ",".join(vals) + '\n')
+
+    def splitFloatToStr(self, value):
+        value = float(value)
+        frac, whole = math.modf(value)
+        frac = frac * 100
+        return [str(int(whole)), str(int(frac))]
 
     def _str_to_int(self, s):
         i = int(s, 16)
@@ -308,11 +342,19 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         return eco2, tvoc
 
     def getGPSData(self):
-        print('[BTLEDelegate] Fetching GPS data...')
         data = self.gps.getCurrent()
-        print('[BTLEDelegate] GPS data fetched')
-        print('Gps data: ', data)
-        return encodeGpsCoord(data['lat']), encodeGpsCoord(data['lon'])
+        if data is None:
+            return (0,0,0), (0,0,0)
+
+        return self.gpsCoordFromString(data['lat']), self.gpsCoordFromString(data['lon'])
+
+    def gpsCoordFromString(self, value): 
+        tokens = value.split(' ')
+        deg = tokens[0]
+        minsec = tokens[2].split('.')
+        mins = minsec[0]
+        secs = minsec[1]
+        return (deg, mins, secs)
 
 def main():
     desired_data = [

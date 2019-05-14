@@ -64,20 +64,53 @@ class Packet():
     return Packet(src_id, dest_id, msg_type, payload)
 
   @staticmethod
+  def bigIntToDigits(n):
+    if n < 256:
+        return n
+    n_str = str(n)
+    return [int(i) for i in n_str] 
+
+  @staticmethod
+  def getFixedLengthInt(val, length):
+    val_str = str(val)
+    while len(val_str) < length:
+        val_str = ['0'] + list(val_str)
+    return [int(c) for c in val_str]
+
+  @staticmethod
+  def encodeGps(val):
+    deg = val[0]
+    mins = val[1]
+    sec_str = str(val[2])
+    if val[2] == 0:
+        sec1 = sec2 = 0
+    else:
+        sec1 = int(sec_str[0:2])
+        sec2 = int(sec_str[2:4])
+    return [deg, mins, sec1, sec2]
+
+  @staticmethod
   def createSensorResponse(id, sensor_type, data):
+    print('Data: ', data)
     src_id = id
     dest_id = 0
     msg_type = MessageType.SENSOR_RESPONSE
-    # split LAT/LON strings into list of chars
-    data[-1] = [c for c in data[-1]]
-    data[-2] = [c for c in data[-2]]
-    payload = [sensor_type]
-    if sensor_type == SensorType.AIR_QUAL:
-        payload.extend(data[0:4])
+    payload = [sensor_type]    
+    fixedLenGps = Packet.encodeGps(data[1:4]) + Packet.encodeGps(data[4:7])
+    payload.extend(fixedLenGps)
+    if sensor_type is SensorType.PRESS:
+        payload.extend(Packet.getFixedLengthInt(data[7], 4))
+    elif sensor_type is SensorType.AIR_QUAL:
+        val = Packet.getFixedLengthInt(data[7], 3)
+        val.extend(Packet.getFixedLengthInt(data[8], 3))
+        payload.extend(val)
     else:
-        payload.extend(data[0:3])
-    return Packet(src_id, dest_id, msg_type, payload)
+        payload.extend(data[7:])
 
+    print('Temp payload:', payload)
+
+    return Packet(src_id, dest_id, msg_type, payload)
+ 
   @staticmethod
   def encode_packet(packet):
     return list(bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload))
@@ -85,12 +118,12 @@ class Packet():
   @staticmethod
   def encodeAvailableSensors(sensors):
     output = [0, 0, 0, 0]
-    if 'temperature' in sensors:
+    if SensorType.TEMP in sensors:
       output[0] = 1
-    if 'humidity' in sensors:
+    if SensorType.HUMID in sensors:
       output[1] = 1
-    if 'gas' in sensors:
+    if SensorType.AIR_QUAL in sensors:
       output[2] = 1
-    if 'pressure' in sensors:
+    if SensorType.PRESS in sensors:
       output[3] = 1
     return output

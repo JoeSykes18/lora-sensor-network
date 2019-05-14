@@ -1,3 +1,1 @@
-from utils import Packet
-from utils import MessageType
-from utils import SensorType
+from utils import Packet, MessageType, SensorType
