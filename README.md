@@ -116,4 +116,4 @@ The node returns sensor data, with the payload containing the result. Most senso
 
 | Byte | 0                | 1                | 2                | 3                | ...              |
 |------|------------------|------------------|------------------|------------------|------------------|
-| Item | Latitude         | Longitude        | Sensor type      | Sensor data      | More sensor data |
+| Item | Sensor type      | Latitude         | Longitude        | Sensor data      | More sensor data |
