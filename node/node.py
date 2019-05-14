@@ -6,7 +6,7 @@ import os
 import threading
 from gps import *
 from bluepy import btle, thingy52
-from utils import Packet, MessageType, SensorType
+from utils import Packet, MessageType, SensorType, encodeGpsCoord
 from gpsinterface import GpsInterface
 from SX127x.LoRa import *
 from SX127x.LoRaArgumentParser import LoRaArgumentParser
@@ -311,11 +311,8 @@ class LoRaSenseDelegate(thingy52.DefaultDelegate):
         print('[BTLEDelegate] Fetching GPS data...')
         data = self.gps.getCurrent()
         print('[BTLEDelegate] GPS data fetched')
-        return self.convertCoord(data['lat']), self.convertCoord(data['lon'])
-
-    def convertCoord(self, coord):
-        tokens = coord.split(' ')
-        return tokens[0] + '"' + tokens[2]
+        print('Gps data: ', data)
+        return encodeGpsCoord(data['lat']), encodeGpsCoord(data['lon'])
 
 def main():
     desired_data = [
