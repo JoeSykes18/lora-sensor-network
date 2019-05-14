@@ -5,7 +5,7 @@ A wireless sensor network using LoRa, implemented for the Advanced Networks modu
 
 A star network topology is used, with a LoPy acting as the basestation. The nodes are Raspberry Pi 3Bs (equipped with the Dragino LoRa/GPS Hat) that are paired with a Nordic Thingy:52 (via Bluetooth LE) to collect geotagged, timestamped environmental sensor data. 
 
-Only a single node has been tested/demonstrated but the network protocol has capacity for an arbitrary number of nodes.
+Only a single node has been tested/demonstrated but the network protocol has capacity for up to 7 nodes.
 
 ![Network architecture diagram](images/network_architecture_diagram.png?raw=true "Network architecture diagram")
 
