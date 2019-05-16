@@ -52,15 +52,65 @@ class Packet():
     dest = data[1]
     msg_type = data[2]
     payload = data[3:]
-
     return Packet(src, dest, msg_type, payload)
 
+
+  @staticmethod
+  def decode_sensor_data(data):
+      sensor_data = {}
+
+      #SensorType1 | Lat4 | Long4 | Temp2
+      sensor_type = data[0]
+
+      lat_data = data[1:5]
+      lat = [chr(c) for c in lat_data]
+      lat = str(lat)
+      sensor_data['latitude'] = lat
+
+
+      long_data = data[5:9]
+      long = [chr(c) for c in long_data]
+      long = str(long)
+      sensor_data['longitude'] = long
+
+      if sensor_type == SensorType.TEMP:
+          temp = data[9:]
+          print(temp[0])
+          print(len(temp))
+          temp = Packet.join_float(temp[0], temp[1])
+          sensor_data['temp'] = temp
+          print(temp)
+      elif sensor_type == SensorType.PRESS:
+          press_list = data[9:]
+          press = [chr(c) for c in press_list]
+          press = int(str(press))
+          sensor_data['press'] = press
+          print(press)
+      elif sensor_type == SensorType.HUMID:
+          humid = data[9:]
+          sensor_data['humid'] = humid[0]
+          print(humid)
+      elif sensor_type == SensorType.AIR_QUAL:
+
+          co2 = data[9:12]
+
+          print(str(co2))
+          co2 = int(str(co2))
+          sensor_data['co2'] = co2
+          tvoc_list = data[12:15]
+          tvoc = [chr(c) for c in tvoc_list]
+          tvoc = int(str(tvoc))
+          sensor_data['tvoc'] = tvoc
+          print(co2)
+          print(tvoc)
+
+      return sensor_data
   @staticmethod
   def create_sensor_request(id, sensor_type):
     src_id = 0
     dest_id = id
-    msg_type = typeMessageType.SENSOR_REQUEST
-    payload = sensor_type
+    msg_type = MessageType.SENSOR_REQUEST
+    payload = [sensor_type]
     return Packet(src_id, dest_id, msg_type, payload)
 
   @staticmethod
@@ -81,6 +131,12 @@ class Packet():
   @staticmethod
   def encode_packet(packet):
     return list(bytearray([packet.src_id, packet.dest_id, packet.type]) + bytearray(packet.payload))
+
+  @staticmethod
+  def join_float(int, dec):
+      decimal = dec /100
+      return int + decimal
+
 
   @staticmethod
   def encodeAvailableSensors(sensors):
