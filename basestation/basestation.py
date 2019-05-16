@@ -1,7 +1,10 @@
 from network import LoRa
 import socket
 import time
+import os
+
 from utils.utils import Packet, MessageType, SensorType
+
 
 ''' A wireless sensor network basestation
     designed to run on a LoPy
@@ -36,59 +39,95 @@ class Basestation():
         self.s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
         self.s.setsockopt(socket.SOL_LORA, socket.SO_DR, 5)
 
-    def join_request(self, pkt):
-        id = pkt.src_id
+    def setup_files(self, id, node_sensors):
+        filename = ("node_" + str(id))
+        if not filename in os.listdir():
+            os.mkdir(filename)
+            if 0 in node_sensors:
+                sensorfile = (filename + '/' + str(SensorType(0)))
+                with open(sensorfile, 'w') as f:
+                    f.write('timestamp, temperature(deg C), latitude, longitude\n')
+            if 1 in node_sensors:
+                sensorfile = (filename + '/' + str(SensorType(1)))
+                with open(sensorfile, 'w') as f:
+                    f.write('timestamp, humidity (%), latitude, longitude\n')
+            if 2 in node_sensors:
+                sensorfile = (filename + '/' + str(SensorType(2)))
+                with open(sensorfile, 'w') as f:
+                    f.write('timestamp, eCO2 (ppm), TVOC (ppb), latitude, longitude\n')
+            if 3 in node_sensors:
+                sensorfile = (filename + '/' + str(SensorType(3)))
+                with open(sensorfile, 'w') as f:
+                    f.write('timestamp, pressure (hPa), latitude, longitude\n')
 
+
+    def join_request(self, pkt):
+
+        id = pkt.src_id
         ids = map(lambda n: n.id, self.nodes)
         if id in ids:
             log_print('Node join failed, ID %d already known' % id)
             return False
 
         # Add node to list
-        node_sensors = self.decode_available_data(pkt.payload)
+        node_sensors = self.decode_available_sensors(pkt.payload)
         node = Node(id,sensors_available=node_sensors)
         self.nodes.append(node)
         response = Packet.createJoinResponsePacket(id)
         response = Packet.encode_packet(response)
-        print(response)
         self.s.setblocking(True)
         self.s.send(bytes(response))
         self.s.setblocking(False)
+        #self.setup_files(id, node_sensors)
         print("Sent join acknowledgement")
         return True
 
-    def decode_available_data(self, data):
+    def decode_available_sensors(self, data):
         if len(data) < 3:
             log_print('Cannot decode available data with less than 3 bytes')
             return False
 
         available = []
 
-        if data[0] == '1':
+        if data[0] == 1:
             available.append(SensorType.TEMP)
-        if data[1] == '1':
-            available.append(SensorType.HUMID)
-        if data[2] == '1':
-            available.append(SensorType.AIR_QUAL)
-        if data[3] == '1':
-            available.append(SensorType.PRESS)
 
+        if data[1] == 1:
+            available.append(SensorType.HUMID)
+
+        if data[2] == 1:
+            available.append(SensorType.AIR_QUAL)
+
+        if data[3] == 1:
+            available.append(SensorType.PRESS)
 
         return available
 
-    def record_sensor_data(self, data):
+    def record_sensor_data(self, data, node, sensor):
         # first byte of the payload is the sensor type
-        sensor_type = data[0]
+        id = node.id
         # rest of the payload is the data
-        value = data[1:]
         # store
-        print('Sensor type: %d, Value: %d' % (sensor_type, value))
+        current_time = str(time.time())
+        sensorfile = ("node_" + str(id) + '/' + str(SensorType(sensor)))
+        if sensor == 0:
+            with open(sensorfile, 'w') as f:
+                f.write(current_time + ', ' +  data['temp'] + ', ' + data['latitude'] + ', ' + data['longitude'] +  '\n')
+        if sensor == 1:
+            with open(sensorfile, 'w') as f:
+                f.write(current_time + ', ' +  data['humid'] + ', ' + data['latitude'] + ', ' + data['longitude'] +  '\n')
+        if sensor == 2:
+            with open(sensorfile, 'w') as f:
+                f.write(current_time + ', ' +  data['co2'] + ', ' + data['tvoc'] + ', ' + data['latitude'] + ', ' + data['longitude'] +  '\n')
+        if sensor == 3:
+            with open(sensorfile, 'w') as f:
+                f.write(current_time + ', ' +  data['press'] + ', ' + data['latitude'] + ', ' + data['longitude'] +  '\n')
+
     def waitForPacket(self, id, msg_type, timeout):
         end = time.time() + timeout
         while time.time() < end:
             rx = self.s.recv(256)
             if rx:
-                print(rx)
                 pkt = Packet.decode_packet(rx)
                 if pkt.src_id == id or id == None:
                     if pkt.type == msg_type and pkt.dest_id == 0:
@@ -102,7 +141,7 @@ class Basestation():
         # nodes must join within 60 seconds of basestation activation
         print("Looking for connections...")
         self.s.setblocking(False)
-        t_end = time.time() + 30
+        t_end = time.time() + 12
         while time.time() < t_end:
             pkt = self.waitForPacket(None, MessageType.JOIN_REQUEST, 5)
             if pkt:
@@ -115,32 +154,34 @@ class Basestation():
             # cycle through the sensors and find equipped nodes for each
             for sensor_type in ALL_SENSORS:
                 print('Getting ', sensor_type , ' data...')
-                time.sleep(5)
+                time.sleep(2)
                 for node in self.nodes:
                     # check if the node supports the sensor type
-                    time.sleep(5)
+                    time.sleep(3)
                     print('Polling node with id = ', node.id , '...')
 
                     if sensor_type in node.sensors_available:
+                        print("Sensor available!")
                         # create packet
                         pkt = Packet.create_sensor_request(node.id, sensor_type)
+
                         pkt = Packet.encode_packet(pkt)
                         # set blocking to avoid receiving whilst sending
                         self.s.setblocking(True)
-                        self.s.send(pkt)
+                        self.s.send(bytes(pkt))
                         self.s.setblocking(False)
                         # wait for response before doing anything else
-                        rx, port = self.s.recvfrom(256)
+                        pkt = self.waitForPacket(node.id, MessageType.SENSOR_RESPONSE, 10)
                         # process response
-                        if rx:
-                            pkt = Packet.decode_packet(rx)
+                        if pkt:
+                            print(pkt.payload)
+                            data = Packet.decode_sensor_data(pkt.payload)
+                            print(data)
+                            #self.record_sensor_data(data, node, sensor)
 
-                            if pkt.type == MessageType.SENSOR_RESPONSE:
-                                self.record_sensor_data(pkt)
-                            else:
-                                print(rx)
-                                #log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
+                            #log_print('Received a packet of type %d but expected Sensor Response (%d)' % (pkt.type, MessageType.SENSOR_RESPONSE))
 def main():
+
     base = Basestation([])
     base.start()
 
